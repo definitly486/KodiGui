@@ -29,7 +29,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>1</number>
+     <number>2</number>
     </property>
     <widget class="QWidget" name="volume">
      <attribute name="title">
@@ -93,6 +93,37 @@
       </property>
      </widget>
     </widget>
+    <widget class="QWidget" name="player">
+     <attribute name="title">
+      <string>Player</string>
+     </attribute>
+     <widget class="QPushButton" name="pushButton_2">
+      <property name="geometry">
+       <rect>
+        <x>140</x>
+        <y>100</y>
+        <width>80</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Play Channel</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_3">
+      <property name="geometry">
+       <rect>
+        <x>380</x>
+        <y>100</y>
+        <width>80</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Stop Channel</string>
+      </property>
+     </widget>
+    </widget>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -108,6 +139,5 @@
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
  <resources/>
-
  <connections/>
 </ui>
