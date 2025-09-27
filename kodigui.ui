@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>KodiGui</string>
   </property>
   <property name="windowIcon">
    <iconset>
@@ -61,7 +61,7 @@
        <number>50</number>
       </property>
       <property name="orientation">
-       <enum>Qt::Horizontal</enum>
+       <enum>Qt::Orientation::Horizontal</enum>
       </property>
      </widget>
     </widget>
@@ -132,7 +132,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>20</height>
+     <height>19</height>
     </rect>
    </property>
   </widget>
