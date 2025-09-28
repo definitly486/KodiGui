@@ -224,3 +224,20 @@ void MainWindow::on_pushButton_3_clicked()
 
 }
 
+
+void MainWindow::on_pushButton_4_clicked()
+{
+
+
+    QProcess process;
+    QStringList arguments;
+    arguments   << "-p"  	
+		<< "639639"            
+		<< "ssh"
+                <<  "pi@192.168.8.45"
+                <<  "kodi &";                     
+    process.start("sshpass", arguments);
+    process.waitForFinished();        
+
+}
+
