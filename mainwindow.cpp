@@ -241,3 +241,33 @@ void MainWindow::on_pushButton_4_clicked()
 
 }
 
+
+void MainWindow::on_pushButton_6_clicked()
+{
+
+    QProcess process;
+    QStringList arguments;
+    arguments   << "-p"
+              << "639639"
+              << "ssh"
+              <<  "pi@192.168.8.45"
+              <<  "killall -9 kodi.bin  &";
+    process.start("sshpass", arguments);
+    process.waitForFinished();
+
+}
+
+
+void MainWindow::on_pushButton_5_clicked()
+{
+    QProcess process;
+    QStringList arguments;
+    arguments   << "-p"
+              << "639639"
+              << "ssh"
+              <<  "pi@192.168.8.45"
+              <<  "sudo reboot &";
+    process.start("sshpass", arguments);
+    process.waitForFinished();
+}
+
