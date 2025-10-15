@@ -271,3 +271,39 @@ void MainWindow::on_pushButton_5_clicked()
     process.waitForFinished();
 }
 
+
+
+
+QString  MainWindow::on_lineEdit_2_textChanged()
+{
+    QString input = ui->lineEdit_2->text();
+    return input;
+}
+
+
+void MainWindow::on_pushButton_7_clicked()
+{
+    QString input = on_lineEdit_2_textChanged();
+
+    qDebug()<< input;
+
+    QProcess process;
+
+    QStringList arguments;
+
+    arguments << input;
+
+    QStringList anotherList = {input};
+
+    QString program = "echoplaylist";
+
+    process.setProgram(program);
+
+    process.setArguments(anotherList);
+
+    process.start();
+
+    process.waitForFinished();
+
+}
+
