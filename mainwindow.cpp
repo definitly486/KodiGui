@@ -327,15 +327,20 @@ void MainWindow::on_pushButton_9_clicked()
 }
 
 
-void runCommand(const QString &command, const QStringList &args = {}) {
+void runCommand(MainWindow *window, const QString &command, const QStringList &args = {}) {
     QProcess process;
     process.start(command, args);
     process.waitForFinished(-1);
-    qDebug() << "Команда:" << command << args;
-    qDebug() << "Вывод:" << process.readAllStandardOutput();
-    qDebug() << "Ошибки:" << process.readAllStandardError();
-}
+    QString output = QString::fromUtf8(process.readAllStandardOutput());
+    QString error = QString::fromUtf8(process.readAllStandardError());
 
+    // Вывод в textEdit
+    window->appendToTextEdit("Команда: " + command + " " + args.join(" "));
+    window->appendToTextEdit("Вывод: " + output);
+    if (!error.isEmpty()) {
+        window->appendToTextEdit("Ошибки: " + error);
+    }
+}
 
 void runYTmp4(){
 
@@ -393,43 +398,27 @@ void MainWindow::on_pushButton_8_clicked()
     QString sshPrefix = "ssh";
     QString user = "pi@192.168.8.45";
 
-    // Последовательное выполнение команд с задержками
-    auto executeSequence = [&]() {
-        // 1. sudo systemctl start youtubeUnblock
-        runCommand(sshPrefix, {user, "sudo systemctl start youtubeUnblock"});
+    auto executeSequence = [=]() {
+        runCommand(this, sshPrefix, {user, "sudo systemctl start youtubeUnblock"});
+        runCommand(this, sshPrefix, {user, "rm yt.mp4"});
+        runCommand(this, sshPrefix, {user, "killall -9 yt-dlp"});
+        runCommand(this, sshPrefix, {user, "killall -9 ffmpeg"});
+        runCommand(this, sshPrefix, {user, "sudo systemctl restart youtubeUnblock"});
 
-        // 2. rm yt.mp4
-        runCommand(sshPrefix, {user, "rm yt.mp4"});
+        QString url = "your_video_url"; // замените
+        QString input = on_lineEdit_3_textChanged(); // убедитесь, что это возвращает нужное значение
+        runCommand(this, sshPrefix, {user, "$HOME/.local/bin/yt-dlp -f 91 " + input + " --no-part -o yt.mp4 > /dev/null 2>&1 &"});
 
-        // 3. killall -9 yt-dlp
-        runCommand(sshPrefix, {user, "killall -9 yt-dlp"});
-
-        // 4. killall -9 ffmpeg
-        runCommand(sshPrefix, {user, "killall -9 ffmpeg"});
-
-        // 5. sudo systemctl restart youtubeUnblock
-        runCommand(sshPrefix, {user, "sudo systemctl restart youtubeUnblock"});
-
-        // 6. ./yt.sh $URL &
-        QString url = "your_video_url"; // замените на ваш URL
-        QString input = on_lineEdit_3_textChanged();
-       runCommand(sshPrefix, {user, "$HOME/.local/bin/yt-dlp  -f 91 " + input + " --no-part   -o yt.mp4 " " > /dev/null 2>&1 &"});
-        // 7. sleep 50
-        QTimer::singleShot(50000, []() {
-            qDebug() << "Прошло 50 секунд.";
-            // Можно добавить дальнейшие действия после ожидания
-             runYTmp4();
-
+        QTimer::singleShot(50000, [=]() {
+            this->appendToTextEdit("Прошло 50 секунд.");
+            runYTmp4(); // предполагается, что этот метод тоже выводит в textEdit
         });
-
-
-
     };
 
-    // Запуск последовательности
     executeSequence();
-
 }
+
+
 
 
 QString MainWindow::on_lineEdit_3_textChanged()
@@ -493,7 +482,7 @@ void MainWindow::on_pushButton_11_clicked()
     auto executeSequence = [&]() {
 
         // 3. killall -9 yt-dlp
-        runCommand(sshPrefix, {user, "killall -9 yt-dlp"});
+        runCommand(this,sshPrefix, {user, "killall -9 yt-dlp"});
 
 
 
@@ -514,7 +503,7 @@ void MainWindow::on_pushButton_12_clicked()
     auto executeSequence = [&]() {
 
         // 3. killall -9 yt-dlp
-        runCommand(sshPrefix, {user, "killall -9 ffmpeg"});
+        runCommand(this,sshPrefix, {user, "killall -9 ffmpeg"});
 
 
 
