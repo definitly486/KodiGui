@@ -22,71 +22,39 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+void MainWindow::appendToTextEdit(const QString &text) {
+    ui->textEdit->append(text);
+}
 
-void postkodi(int value) {
 
-
-
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-
+void MainWindow::postkodi(int value) {
+    QNetworkAccessManager *mgr = new QNetworkAccessManager(this); // лучше привязать к объекту
     const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-
     QNetworkRequest request(url);
-
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
-
     QJsonObject obj;
-
     obj["jsonrpc"] = "2.0";
-
     obj["id"] = "1";
-
     obj["method"] = "Application.SetVolume";
 
     obj["params"] = QJsonObject({{"volume", value}});
-
     QJsonDocument doc(obj);
-
     QByteArray data = doc.toJson();
-
-    // or
-
-    // QByteArray data("{\"key1\":\"value1\",\"key2\":\"value2\"}");
-
-    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Application.SetVolume","params":{"volume":80}}' http://192.168.8.45:8081/jsonrpc
-
-    //QByteArray data("{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"Application.SetVolume\",\"params\":\{\"volume\":  50}}");
 
     QNetworkReply *reply = mgr->post(request, data);
 
-
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
             QString contents = QString::fromUtf8(reply->readAll());
-
-            qDebug() << contents;
-
-        }
-
-        else{
-
+            this->appendToTextEdit(contents);
+        } else {
             QString err = reply->errorString();
-
-            qDebug() << err;
-
+            this->appendToTextEdit(err);
         }
-
         reply->deleteLater();
-
     });
-
-
-
 }
-
 
 void MainWindow::on_horizontalSlider_valueChanged(int value)
 
@@ -94,8 +62,8 @@ void MainWindow::on_horizontalSlider_valueChanged(int value)
 
     postkodi(value);
 
-    qDebug() << "Значение горизонтального слайдера изменилось:" << value;
-
+  //  qDebug() << "Значение горизонтального слайдера изменилось:" << value;
+  appendToTextEdit("Значение горизонтального слайдера изменилось: " + QString::number(value));
 
 }
 
@@ -556,4 +524,3 @@ void MainWindow::on_pushButton_12_clicked()
     executeSequence();
 
 }
-

@@ -16,6 +16,8 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    void appendToTextEdit(const QString &text);// объявляем функцию
+    void postkodi(int value);
 
 private slots:
     void on_horizontalSlider_valueChanged(int value);
