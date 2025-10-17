@@ -445,15 +445,16 @@ void MainWindow::on_pushButton_8_clicked()
         // 6. ./yt.sh $URL &
         QString url = "your_video_url"; // замените на ваш URL
         QString input = on_lineEdit_3_textChanged();
-       runCommand(sshPrefix, {user, "nohup ./yt.sh " + input + " > /dev/null 2>&1 &"});
-
+       runCommand(sshPrefix, {user, "$HOME/.local/bin/yt-dlp  -f 91 " + input + " --no-part   -o yt.mp4 " " > /dev/null 2>&1 &"});
         // 7. sleep 60
-        QTimer::singleShot(40000, []() {
+        QTimer::singleShot(60000, []() {
             qDebug() << "Прошло 60 секунд.";
             // Можно добавить дальнейшие действия после ожидания
+             runYTmp4();
+
         });
 
-       runYTmp4();
+
 
     };
 
