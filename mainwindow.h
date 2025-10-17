@@ -38,7 +38,17 @@ private slots:
 
     void on_pushButton_7_clicked();
 
-private:
+    void on_pushButton_9_clicked();
+
+    void on_pushButton_8_clicked();
+
+     QString  on_lineEdit_3_textChanged();
+
+
+
+     void on_pushButton_10_clicked();
+
+ private:
     Ui::MainWindow *ui;
 };
 #endif // MAINWINDOW_H
