@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 17.0.2, 2025-10-17T08:15:41. -->
+<!-- Written by QtCreator 17.0.2, 2025-10-22T15:36:08. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
-  <value type="QByteArray">{e69b4db2-4bf0-45b6-aaee-af8344ed2f6b}</value>
+  <value type="QByteArray">{48acfb70-a5aa-416b-9bd8-86c266cdc0da}</value>
  </data>
  <data>
   <variable>ProjectExplorer.Project.ActiveTarget</variable>
@@ -95,7 +95,7 @@
    <value type="bool" key="HasPerBcDcs">true</value>
    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DefaultDisplayName">Desktop</value>
    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName">Desktop</value>
-   <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">{41aed0f8-160f-4aa4-ba74-73b2083a4544}</value>
+   <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">{498a3786-b1e3-4673-bd1b-b133d8c8c0dd}</value>
    <value type="qlonglong" key="ProjectExplorer.Target.ActiveBuildConfiguration">0</value>
    <value type="qlonglong" key="ProjectExplorer.Target.ActiveDeployConfiguration">0</value>
    <value type="qlonglong" key="ProjectExplorer.Target.ActiveRunConfiguration">0</value>
@@ -163,13 +163,11 @@
      <value type="bool" key="PE.EnvironmentAspect.PrintOnRun">false</value>
      <value type="QString" key="PerfRecordArgsId">-e cpu-cycles --call-graph dwarf,4096 -F 250</value>
      <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName"></value>
-     <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">Qt4ProjectManager.Qt4RunConfiguration:</value>
-     <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">/home/definitly/KodiGui/kodigui.pro</value>
+     <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">ProjectExplorer.CustomExecutableRunConfiguration</value>
+     <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey"></value>
      <value type="bool" key="ProjectExplorer.RunConfiguration.Customized">false</value>
      <value type="bool" key="RunConfiguration.UseCppDebuggerAuto">true</value>
-     <value type="bool" key="RunConfiguration.UseLibrarySearchPath">true</value>
      <value type="bool" key="RunConfiguration.UseQmlDebuggerAuto">true</value>
-     <value type="QString" key="RunConfiguration.WorkingDirectory.default">/home/definitly/KodiGui/build/Desktop-Debug</value>
     </valuemap>
     <value type="qlonglong" key="ProjectExplorer.Target.RunConfigurationCount">1</value>
     <value type="int" key="Qt4ProjectManager.Qt4BuildConfiguration.BuildConfiguration">2</value>
@@ -199,13 +197,11 @@
     <value type="bool" key="PE.EnvironmentAspect.PrintOnRun">false</value>
     <value type="QString" key="PerfRecordArgsId">-e cpu-cycles --call-graph dwarf,4096 -F 250</value>
     <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName"></value>
-    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">Qt4ProjectManager.Qt4RunConfiguration:</value>
-    <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">/home/definitly/KodiGui/kodigui.pro</value>
+    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">ProjectExplorer.CustomExecutableRunConfiguration</value>
+    <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey"></value>
     <value type="bool" key="ProjectExplorer.RunConfiguration.Customized">false</value>
     <value type="bool" key="RunConfiguration.UseCppDebuggerAuto">true</value>
-    <value type="bool" key="RunConfiguration.UseLibrarySearchPath">true</value>
     <value type="bool" key="RunConfiguration.UseQmlDebuggerAuto">true</value>
-    <value type="QString" key="RunConfiguration.WorkingDirectory.default">/home/definitly/KodiGui/build/Desktop-Debug</value>
    </valuemap>
    <value type="qlonglong" key="ProjectExplorer.Target.RunConfigurationCount">1</value>
   </valuemap>

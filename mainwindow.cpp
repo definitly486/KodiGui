@@ -557,3 +557,52 @@ void MainWindow::on_pushButton_12_clicked()
 
 }
 
+
+void MainWindow::on_pushButton_13_clicked()
+{
+
+    QNetworkAccessManager *mgr = new QNetworkAccessManager();
+
+    // Define the URL
+    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
+
+    // Setup the request
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    // Build the JSON object for toggling the addon
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["id"] = 1;
+    obj["method"] = "Addons.SetAddonEnabled";
+
+    QJsonObject params;
+    params["addonid"] = "pvr.iptvsimple";
+    params["enabled"] = "toggle"; // or true/false as per API requirements
+
+    obj["params"] = params;
+
+    //JSON='{"jsonrpc":"2.0","method":"Addons.SetAddonEnabled","params":{"addonid":"pvr.iptvsimple","enabled":"toggle"},"id":1}'
+
+    QJsonDocument doc(obj);
+    QByteArray data = doc.toJson();
+
+    // Send POST request
+    QNetworkReply *reply = mgr->post(request, data);
+
+    // Handle reply
+    QObject::connect(reply, &QNetworkReply::finished, [=](){
+        if(reply->error() == QNetworkReply::NoError){
+            QString contents = QString::fromUtf8(reply->readAll());
+            qDebug() << "Response:" << contents;
+        }
+        else{
+            QString err = reply->errorString();
+            qDebug() << "Error:" << err;
+        }
+        reply->deleteLater();
+    });
+
+
+}
+
