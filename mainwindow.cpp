@@ -606,7 +606,6 @@ void MainWindow::on_pushButton_13_clicked()
 }
 
 
-
 void MainWindow::on_pushButton_14_clicked()
 {
     QNetworkAccessManager *mgr = new QNetworkAccessManager(this);
