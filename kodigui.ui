@@ -29,7 +29,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>2</number>
+     <number>0</number>
     </property>
     <widget class="QWidget" name="volume">
      <attribute name="title">
@@ -52,16 +52,16 @@
       <property name="geometry">
        <rect>
         <x>100</x>
-        <y>130</y>
+        <y>120</y>
         <width>160</width>
         <height>16</height>
        </rect>
       </property>
-      <property name="maximum">
-       <number>100</number>
-      </property>
-      <property name="value">
+      <property name="sliderPosition">
        <number>50</number>
+      </property>
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
       </property>
      </widget>
     </widget>
