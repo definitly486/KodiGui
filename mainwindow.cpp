@@ -640,3 +640,11 @@ void MainWindow::on_pushButton_14_clicked()
     });
 }
 
+
+void MainWindow::on_pushButton_clearurl_clicked()
+{
+    ui->lineEdit_2->clear();           // Очищаем текст
+    ui->lineEdit_2->setPlaceholderText(""); // Опционально: очищаем плейсхолдер, если нужно
+    // или можно вернуть стандартный плейсхолдер:
+    // ui->lineEdit_2->setPlaceholderText("Введите URL...");
+}

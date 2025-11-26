@@ -56,6 +56,8 @@ private slots:
 
      void on_pushButton_14_clicked();
 
+     void on_pushButton_clearurl_clicked();
+
  private:
     Ui::MainWindow *ui;
 };
