@@ -648,3 +648,6 @@ void MainWindow::on_pushButton_clearurl_clicked()
     // или можно вернуть стандартный плейсхолдер:
     // ui->lineEdit_2->setPlaceholderText("Введите URL...");
 }
+
+
+
