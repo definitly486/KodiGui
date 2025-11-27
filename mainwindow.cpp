@@ -646,6 +646,10 @@ void MainWindow::on_pushButton_clearurl_clicked()
     ui->lineEdit_2->clear();                    // вот твоя очистка URL
     ui->lineEdit_2->setPlaceholderText("Введите URL...");
     ui->lineEdit_2->setFocus();
+
+    ui->lineEdit->clear();                    // вот твоя очистка URL
+    ui->lineEdit->setPlaceholderText("Введите URL...");
+    ui->lineEdit->setFocus();
 }
 
 

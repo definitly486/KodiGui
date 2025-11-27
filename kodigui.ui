@@ -61,7 +61,7 @@
        <number>50</number>
       </property>
       <property name="orientation">
-       <enum>Qt::Orientation::Horizontal</enum>
+       <enum>Qt::Horizontal</enum>
       </property>
      </widget>
     </widget>
@@ -144,8 +144,8 @@
      <widget class="QPushButton" name="pushButton_clearurl">
       <property name="geometry">
        <rect>
-        <x>310</x>
-        <y>230</y>
+        <x>470</x>
+        <y>140</y>
         <width>80</width>
         <height>23</height>
        </rect>
@@ -396,7 +396,7 @@
      <x>0</x>
      <y>0</y>
      <width>584</width>
-     <height>19</height>
+     <height>20</height>
     </rect>
    </property>
   </widget>
