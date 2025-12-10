@@ -8,6 +8,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QNetworkReply>
+#include "playerwindow.h"
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -652,6 +654,57 @@ void MainWindow::on_pushButton_clearurl_clicked()
     ui->lineEdit->setFocus();
 }
 
+
+
+
+//получение урл для матч тв
+void MainWindow::on_pushButton_15_clicked()
+{
+
+QUrl url("https://matchtv.ru/on-air");
+
+    // Создаём и показываем встроенный плеер
+    PlayerWindow *player = new PlayerWindow(url, this);
+    player->setAttribute(Qt::WA_DeleteOnClose); // автоудаление при закрытии
+    player->show();
+    connect(player, &PlayerWindow::urlCaptured,
+            this, [&](const QUrl& capturedUrl){
+                ui->lineEdit_4->setText(capturedUrl.toString()); // Обращаемся через указатель
+            });
+    qDebug() << "Открыт встроенный плеер:" << url.toString();
+
+
+}
+
+
+//запуск матч тв
+void MainWindow::on_pushButton_16_clicked()
+{
+
+
+    QString input = ui->lineEdit_4->text();
+
+    qDebug()<< input;
+
+    QProcess process;
+
+    QStringList arguments;
+
+    arguments << input;
+
+    QStringList anotherList = {input};
+
+    QString program = "echoplaylist";
+
+    process.setProgram(program);
+
+    process.setArguments(anotherList);
+
+    process.start();
+
+    process.waitForFinished();
+
+}
 
 
 

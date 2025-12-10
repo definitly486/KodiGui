@@ -1,4 +1,4 @@
-QT       += core gui network
+QT       += core gui network widgets webenginewidgets webenginecore
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -10,13 +10,18 @@ CONFIG += c++17
 
 SOURCES += \
     main.cpp \
-    mainwindow.cpp
+    playerwindow.cpp \
+    mainwindow.cpp \
+    m3u8interceptor.cpp 
 
 HEADERS += \
-    mainwindow.h
+    playerwindow.h \
+    mainwindow.h \
+    m3u8interceptor.h
 
 FORMS += \
-    kodigui.ui
+    kodigui.ui \
+    playerwindow.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
