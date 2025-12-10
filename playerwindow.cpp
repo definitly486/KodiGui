@@ -75,32 +75,7 @@ PlayerWindow::PlayerWindow(const QUrl &url, QWidget *parent)
           // Отправляем сигнал с захваченным URL
         emit urlCaptured(url); // посылаем URL назад в MainWindow
 
-        qDebug().noquote() << "ЗАПУСКАЕМ MPV →" << url;
-
-        QString mpvPath = QStandardPaths::findExecutable("mpv");
-        if (mpvPath.isEmpty() || !QFile::exists(mpvPath))
-            mpvPath = "/usr/local/bin/mpv";
-
-        if (!QFile::exists(mpvPath)) {
-            qCritical() << "mpv не найден! Выполните: pkg install mpv";
-            return;
-        }
-
-        QProcess::startDetached(mpvPath, QStringList()
-            << "--http-header-fields=Referer: https://livetv869.me/"
-            << "--user-agent=Mozilla/5.0 (X11; FreeBSD amd64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36"
-            << "--hwdec=auto-safe"
-            << "--vo=gpu"
-            << "--cache=yes"
-            << "--volume=80"
-            << "--no-terminal"
-            << "--really-quiet"
-            << "--title=LiveTV • NHL"
-            << url
-        );
-
-        qDebug() << "mpv запущен!";
-        QTimer::singleShot(800, this, &QWidget::close);
+      
     });
 
     // Полноэкранный режим
