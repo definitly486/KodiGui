@@ -9,6 +9,13 @@
 #include <QJsonObject>
 #include <QNetworkReply>
 #include "playerwindow.h"
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QUrl>
+#include <QDebug>
+#include <QRegularExpression>
+#include <QMessageBox>
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -707,4 +714,74 @@ void MainWindow::on_pushButton_16_clicked()
 }
 
 
+void MainWindow::on_getonairnow_clicked()
+{
+    QNetworkAccessManager *manager = new QNetworkAccessManager(this);
 
+    QNetworkRequest request(QUrl("https://matchtv.ru/on-air"));
+    request.setHeader(QNetworkRequest::UserAgentHeader,
+                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/91.0.4472.124 Safari/537.36");
+
+    QNetworkReply *reply = manager->get(request);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, manager]() {
+        QString result = "<b>Эфир на Матч ТВ (11 декабря 2025)</b><br><br>";
+
+        if (reply->error() != QNetworkReply::NoError) {
+            result += "<b>Ошибка:</b> " + reply->errorString();
+        } else {
+            QString html = QString::fromUtf8(reply->readAll());
+
+            // Ищем текущую трансляцию (обычно в формате HH:MM Название. Прямая трансляция...)
+            QRegularExpression currentRe(R"(\d{2}:\d{2}\s+([^<]+?\. Прямая трансляция[^<]*))");
+            QRegularExpressionMatch currentMatch = currentRe.match(html);
+            if (currentMatch.hasMatch()) {
+                result += "<b>Сейчас в эфире:</b><br>" + currentMatch.captured(1).trimmed() + "<br><br>";
+            } else {
+                result += "<b>Сейчас в эфире:</b> Информация не найдена<br><br>";
+            }
+
+            // Ищем топ-трансляции или расписание: "11 дек HH:MM" + название
+            QRegularExpression topRe(R"(11 дек \d{2}:\d{2}</p>\s*<p>[^<]*</p>\s*<p>[^<]*</p>\s*<p>([^<]+)</p>)");
+            QRegularExpressionMatchIterator topIt = topRe.globalMatch(html);
+
+            QStringList topPrograms;
+            while (topIt.hasNext()) {
+                QRegularExpressionMatch match = topIt.next();
+                topPrograms << "11 дек " + match.captured(0).section("</p>", 0, 0).section(" ", -2) + " — " + match.captured(1).trimmed();
+            }
+
+            // Альтернативно ищем все упоминания времени и названий
+            if (topPrograms.isEmpty()) {
+                QRegularExpression scheduleRe(R"((?:11 дек )?(\d{2}:\d{2})\s*([^<\n\r]+?)(?:\. Прямая трансляция|Бесплатно|<|$))");
+                QRegularExpressionMatchIterator it = scheduleRe.globalMatch(html);
+                QStringList programs;
+                while (it.hasNext() && programs.size() < 10) {
+                    QRegularExpressionMatch match = it.next();
+                    QString time = match.captured(1);
+                    QString title = match.captured(2).trimmed();
+                    if (!title.isEmpty() && title.length() > 10) {
+                        programs << time + " — " + title;
+                    }
+                }
+                if (!programs.isEmpty()) {
+                    topPrograms = programs;
+                }
+            }
+
+            if (!topPrograms.isEmpty()) {
+                result += "<b>Ближайшие трансляции:</b><br>";
+                result += topPrograms.join("<br>");
+            } else {
+                result += "Расписание не найдено (возможно, структура страницы изменилась).";
+            }
+        }
+
+        ui->textBrowseronairnow->setHtml(result);
+
+        reply->deleteLater();
+        manager->deleteLater();
+    });
+}

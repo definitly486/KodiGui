@@ -61,7 +61,7 @@
        <number>50</number>
       </property>
       <property name="orientation">
-       <enum>Qt::Horizontal</enum>
+       <enum>Qt::Orientation::Horizontal</enum>
       </property>
      </widget>
     </widget>
@@ -428,6 +428,29 @@
        <string>Play</string>
       </property>
      </widget>
+     <widget class="QTextBrowser" name="textBrowseronairnow">
+      <property name="geometry">
+       <rect>
+        <x>300</x>
+        <y>10</y>
+        <width>281</width>
+        <height>221</height>
+       </rect>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="getonairnow">
+      <property name="geometry">
+       <rect>
+        <x>300</x>
+        <y>250</y>
+        <width>201</width>
+        <height>22</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Получить что сейчас в эфире</string>
+      </property>
+     </widget>
     </widget>
    </widget>
   </widget>
@@ -437,7 +460,7 @@
      <x>0</x>
      <y>0</y>
      <width>584</width>
-     <height>20</height>
+     <height>19</height>
     </rect>
    </property>
   </widget>

@@ -43,8 +43,7 @@ private slots:
     void on_pushButton_8_clicked();
 
      QString  on_lineEdit_3_textChanged();
-
-
+    void on_getonairnow_clicked();  // <-- добавьте эту строку
 
      void on_pushButton_10_clicked();
 
