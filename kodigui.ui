@@ -14,9 +14,9 @@
    <string>KodiGui</string>
   </property>
   <property name="windowIcon">
-   <iconset>
-    <normalon>:/icons/kodi.ico</normalon>
-   </iconset>
+   <iconset resource="resource.qrc">
+    <normaloff>:/kodi.ico</normaloff>
+    <normalon>:/icons/kodi.ico</normalon>:/kodi.ico</iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QTabWidget" name="tabWidget">
@@ -61,7 +61,7 @@
        <number>50</number>
       </property>
       <property name="orientation">
-       <enum>Qt::Orientation::Horizontal</enum>
+       <enum>Qt::Horizontal</enum>
       </property>
      </widget>
     </widget>
@@ -460,12 +460,14 @@
      <x>0</x>
      <y>0</y>
      <width>584</width>
-     <height>19</height>
+     <height>20</height>
     </rect>
    </property>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
- <resources/>
+ <resources>
+  <include location="resource.qrc"/>
+ </resources>
  <connections/>
 </ui>

@@ -17,16 +17,28 @@
 #include <QRegularExpression>
 #include <QMessageBox>
 
+#include <QFile>
+
+#include <QFile>
+#include <QTextStream>
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , pythonProcess(new QProcess(this))        // ← обязательно this!
 {
     ui->setupUi(this);
 }
 
 MainWindow::~MainWindow()
 {
+if (pythonProcess->state() != QProcess::NotRunning) {
+        pythonProcess->terminate();
+        if (!pythonProcess->waitForFinished(1000)) {
+            pythonProcess->kill();                 // если не хочет по-хорошему
+        }
+    }
     delete ui;
 }
 
@@ -716,72 +728,63 @@ void MainWindow::on_pushButton_16_clicked()
 
 void MainWindow::on_getonairnow_clicked()
 {
-    QNetworkAccessManager *manager = new QNetworkAccessManager(this);
+ ui->textBrowseronairnow->clear();
 
-    QNetworkRequest request(QUrl("https://matchtv.ru/on-air"));
-    request.setHeader(QNetworkRequest::UserAgentHeader,
-                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/91.0.4472.124 Safari/537.36");
+    // 1. Читаем скрипт из ресурсов
+    QFile src(":/match_now.py");
+    if (!src.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        ui->textBrowseronairnow->setHtml("<font color='red'>Ошибка: не найден скрипт<br>:/scripts/match_now.py</font>");
+        return;
+    }
 
-    QNetworkReply *reply = manager->get(request);
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, manager]() {
-        QString result = "<b>Эфир на Матч ТВ (11 декабря 2025)</b><br><br>";
-
-        if (reply->error() != QNetworkReply::NoError) {
-            result += "<b>Ошибка:</b> " + reply->errorString();
-        } else {
-            QString html = QString::fromUtf8(reply->readAll());
-
-            // Ищем текущую трансляцию (обычно в формате HH:MM Название. Прямая трансляция...)
-            QRegularExpression currentRe(R"(\d{2}:\d{2}\s+([^<]+?\. Прямая трансляция[^<]*))");
-            QRegularExpressionMatch currentMatch = currentRe.match(html);
-            if (currentMatch.hasMatch()) {
-                result += "<b>Сейчас в эфире:</b><br>" + currentMatch.captured(1).trimmed() + "<br><br>";
-            } else {
-                result += "<b>Сейчас в эфире:</b> Информация не найдена<br><br>";
-            }
-
-            // Ищем топ-трансляции или расписание: "11 дек HH:MM" + название
-            QRegularExpression topRe(R"(11 дек \d{2}:\d{2}</p>\s*<p>[^<]*</p>\s*<p>[^<]*</p>\s*<p>([^<]+)</p>)");
-            QRegularExpressionMatchIterator topIt = topRe.globalMatch(html);
-
-            QStringList topPrograms;
-            while (topIt.hasNext()) {
-                QRegularExpressionMatch match = topIt.next();
-                topPrograms << "11 дек " + match.captured(0).section("</p>", 0, 0).section(" ", -2) + " — " + match.captured(1).trimmed();
-            }
-
-            // Альтернативно ищем все упоминания времени и названий
-            if (topPrograms.isEmpty()) {
-                QRegularExpression scheduleRe(R"((?:11 дек )?(\d{2}:\d{2})\s*([^<\n\r]+?)(?:\. Прямая трансляция|Бесплатно|<|$))");
-                QRegularExpressionMatchIterator it = scheduleRe.globalMatch(html);
-                QStringList programs;
-                while (it.hasNext() && programs.size() < 10) {
-                    QRegularExpressionMatch match = it.next();
-                    QString time = match.captured(1);
-                    QString title = match.captured(2).trimmed();
-                    if (!title.isEmpty() && title.length() > 10) {
-                        programs << time + " — " + title;
-                    }
-                }
-                if (!programs.isEmpty()) {
-                    topPrograms = programs;
-                }
-            }
-
-            if (!topPrograms.isEmpty()) {
-                result += "<b>Ближайшие трансляции:</b><br>";
-                result += topPrograms.join("<br>");
-            } else {
-                result += "Расписание не найдено (возможно, структура страницы изменилась).";
-            }
+    // 2. Создаём временный файл с правильным именем и правами (важно для FreeBSD!)
+    QString scriptPath = QDir::tempPath() + "/kodigui_match_now.py";
+    {
+        QFile temp(scriptPath);
+        if (!temp.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            ui->textBrowseronairnow->append("Не могу записать временный файл в /tmp");
+            return;
         }
+        temp.write(src.readAll());
+        temp.setPermissions(QFile::ReadOwner  | QFile::WriteOwner | QFile::ExeOwner |
+                            QFile::ReadUser   | QFile::WriteUser  | QFile::ExeUser);
+        temp.close();
+    }
 
-        ui->textBrowseronairnow->setHtml(result);
+    // 3. Используем точно тот Python, который у тебя есть
+    QString pythonCmd = "/usr/local/bin/python3.11";
 
-        reply->deleteLater();
-        manager->deleteLater();
+    ui->textBrowseronairnow->append("<i>Запуск матча...</i>");
+    ui->textBrowseronairnow->append("<small>" + pythonCmd + " " + scriptPath + "</small><hr>");
+
+    // 4. Настраиваем процесс
+    pythonProcess->setProcessChannelMode(QProcess::MergedChannels);
+
+    // Живой вывод в textBrowseronairnow
+    disconnect(pythonProcess, &QProcess::readyReadStandardOutput, nullptr, nullptr); // на всякий
+    connect(pythonProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        QString out = pythonProcess->readAllStandardOutput();
+        ui->textBrowseronairnow->append(out.trimmed());
     });
+
+    // 5. По завершении — удаляем файл и пишем статус
+      pythonProcess->disconnect(); // чистим все старые сигналы
+
+    connect(pythonProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        ui->textBrowseronairnow->append(pythonProcess->readAllStandardOutput().trimmed());
+    });
+
+    connect(pythonProcess, &QProcess::readyReadStandardError, this, [this]() {
+        ui->textBrowseronairnow->append("<font color='red'>" + pythonProcess->readAllStandardError().trimmed() + "</font>");
+    });
+
+    connect(pythonProcess, &QProcess::finished, this, [this, scriptPath](int exitCode) {
+        if (exitCode == 0)
+            ui->textBrowseronairnow->append("<hr><b><font color='green'>Матч успешно обработан</font></b>");
+        else
+            ui->textBrowseronairnow->append(QString("<hr><b><font color='red'>Ошибка (код %1)</font></b>").arg(exitCode));
+        QFile::remove(scriptPath);
+    });
+
+    pythonProcess->start(pythonCmd, QStringList() << scriptPath);
 }

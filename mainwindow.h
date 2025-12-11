@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QProcess>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -65,6 +66,7 @@ private slots:
 
 
  private:
-    Ui::MainWindow *ui;
+ Ui::MainWindow *ui;
+QProcess *pythonProcess;        // ← вот это
 };
 #endif // MAINWINDOW_H
