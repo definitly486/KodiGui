@@ -1,5 +1,7 @@
+
 #include "ui_kodigui.h"
 #include "mainwindow.h"
+#include "taskqueue.h"
 #include <QDebug>
 #include <QProcess>
 #include <QtNetwork>
@@ -305,25 +307,31 @@ void MainWindow::on_pushButton_7_clicked()
 {
     QString input = on_lineEdit_2_textChanged();
 
-    qDebug()<< input;
+    // Создаем файл
+    QFile file("/tmp/list.m3u");
+    if(file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << input << "|user-agent=Mozilla/5.0 (X11; FreeBSD amd64; rv:77.0) Gecko/20100101 Firefox/77.0\n";
+        file.close();
+    } else {
+        qDebug() << "Cannot create /tmp/list.m3u";
+        return;
+    }
 
-    QProcess process;
+    TaskQueue* queue = new TaskQueue(this);
 
-    QStringList arguments;
+    QUrl jsonRpcUrl("http://192.168.8.45:8081/jsonrpc");
 
-    arguments << input;
+    queue->addTask(new JsonRpcTask(jsonRpcUrl, {{"jsonrpc","2.0"},{"method","Player.Stop"},{"params", QJsonObject{{"playerid",1}}},{"id",1}}));
 
-    QStringList anotherList = {input};
+    queue->addTask(new SftpTask("192.168.8.45", 22, "pi", "639639",
+                                "/tmp/list.m3u", "/var/www/html/list.m3u"));
 
-    QString program = "echoplaylist";
+    queue->addTask(new JsonRpcTask(jsonRpcUrl, {{"jsonrpc","2.0"},{"method","Addons.SetAddonEnabled"},{"params", QJsonObject{{"addonid","pvr.iptvsimple"},{"enabled","toggle"}}},{"id",1}}));
 
-    process.setProgram(program);
+    queue->addTask(new JsonRpcTask(jsonRpcUrl, {{"jsonrpc","2.0"},{"method","Player.Open"},{"params", QJsonObject{{"item", QJsonObject{{"channelid",1}}}}},{"id",1}}));
 
-    process.setArguments(anotherList);
-
-    process.start();
-
-    process.waitForFinished();
+    queue->start();
 
 }
 
@@ -703,25 +711,33 @@ void MainWindow::on_pushButton_16_clicked()
 
     QString input = ui->lineEdit_4->text();
 
-    qDebug()<< input;
+    // Создаем файл
+    QFile file("/tmp/list.m3u");
+    if(file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << input << "|user-agent=Mozilla/5.0 (X11; FreeBSD amd64; rv:77.0) Gecko/20100101 Firefox/77.0\n";
+        file.close();
+    } else {
+        qDebug() << "Cannot create /tmp/list.m3u";
+        return;
+    }
 
-    QProcess process;
+    TaskQueue* queue = new TaskQueue(this);
 
-    QStringList arguments;
+    QUrl jsonRpcUrl("http://192.168.8.45:8081/jsonrpc");
 
-    arguments << input;
+    queue->addTask(new JsonRpcTask(jsonRpcUrl, {{"jsonrpc","2.0"},{"method","Player.Stop"},{"params", QJsonObject{{"playerid",1}}},{"id",1}}));
 
-    QStringList anotherList = {input};
+    queue->addTask(new DelayTask(3000, queue)); // <-- sleep 3s
 
-    QString program = "echoplaylist";
+    queue->addTask(new SftpTask("192.168.8.45", 22, "pi", "639639",
+                                "/tmp/list.m3u", "/var/www/html/list.m3u"));
 
-    process.setProgram(program);
+    queue->addTask(new JsonRpcTask(jsonRpcUrl, {{"jsonrpc","2.0"},{"method","Addons.SetAddonEnabled"},{"params", QJsonObject{{"addonid","pvr.iptvsimple"},{"enabled","toggle"}}},{"id",1}}));
 
-    process.setArguments(anotherList);
+    queue->addTask(new JsonRpcTask(jsonRpcUrl, {{"jsonrpc","2.0"},{"method","Player.Open"},{"params", QJsonObject{{"item", QJsonObject{{"channelid",1}}}}},{"id",1}}));
 
-    process.start();
-
-    process.waitForFinished();
+    queue->start();
 
 }
 

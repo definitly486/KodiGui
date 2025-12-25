@@ -12,11 +12,13 @@ SOURCES += \
     main.cpp \
     playerwindow.cpp \
     mainwindow.cpp \
+    taskqueue.cpp \
     m3u8interceptor.cpp 
 
 HEADERS += \
     playerwindow.h \
     mainwindow.h \
+    taskqueue.h \
     m3u8interceptor.h
 
 FORMS += \
@@ -28,8 +30,11 @@ qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
-
-
 RESOURCES += \
    resource.qrc
+
+# libssh2 и pthread для FreeBSD
+QMAKE_CXXFLAGS += -I/usr/local/include
+INCLUDEPATH += /usr/local/include
+LIBS += -L/usr/local/lib -lssh2 -lpthread
 
