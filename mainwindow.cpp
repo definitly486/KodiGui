@@ -121,44 +121,32 @@ void MainWindow::on_horizontalSlider_valueChanged(int value)
 
 }
 
-
-
-
 void MainWindow::on_pushButton_clicked()
-
 {
+    QNetworkAccessManager *mgr = new QNetworkAccessManager(this);
 
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
+    // 1️⃣ reloadPvrIptvSimple вызывается первым
     reloadPvrIptvSimple(mgr, 2);
 
-    QString input = on_lineEdit_textChanged();
+    // 2️⃣ подключаем сигнал, чтобы выполнить остальной код после загрузки
+    connect(this, &MainWindow::pvrReloaded, this, [this]() {
+        QString input = ui->lineEdit->text();
+        qDebug() << "Input from lineEdit:" << input;
 
-    qDebug()<< input;
+        QProcess process;
+        QString program = "kodidlp";         // замените на ваш реальный исполняемый файл
+        QStringList arguments = { input };
 
-    QProcess process;
+        process.setProgram(program);
+        process.setArguments(arguments);
 
-    QStringList arguments;
-
-    arguments << input;
-
-    QStringList anotherList = {input};
-
-    QString program = "kodidlp";
-
-    process.setProgram(program);
-
-    process.setArguments(anotherList);
-
-    process.start();
-
-    process.waitForFinished();
-
+        if (!process.startDetached()) {
+            qDebug() << "Failed to start process";
+        } else {
+            qDebug() << "Process started successfully";
+        }
+    });
 }
-
 
 QString  MainWindow::on_lineEdit_textChanged()
 
@@ -867,14 +855,28 @@ void sendToggleAddon(QNetworkAccessManager* mgr, int id = 1)
 }
 
 // Функция повторного вызова с задержкой 3 секунды
-void MainWindow::reloadPvrIptvSimple(QNetworkAccessManager* mgr, int times)
+void MainWindow::reloadPvrIptvSimple(QNetworkAccessManager *mgr, int param)
 {
-    qDebug() << "[reloadPvrIptvSimple] Запуск перезагрузки pvr.iptvsimple, повторов:" << times;
+    QNetworkRequest request(QUrl("http://192.168.8.45:8081/jsonrpc"));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
-    for (int i = 0; i < times; ++i) {
-        QTimer::singleShot(i * 3000, [ mgr, i, times]() {
-            qDebug() << "[reloadPvrIptvSimple] Выполняем вызов" << i+1 << "/" << times;
-            sendToggleAddon(mgr, i+1); // твоя функция для отправки JSON
+    QByteArray postData = QString("{\"method\":\"reload\",\"param\":%1}").arg(param).toUtf8();
+
+    QNetworkReply *reply = mgr->post(request, postData);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        if (reply->error() != QNetworkReply::NoError) {
+            qDebug() << "Network error:" << reply->errorString();
+        } else {
+            QByteArray response = reply->readAll();
+            qDebug() << "Response received:" << response;
+        }
+        reply->deleteLater();
+
+        // 🔹 Делаем задержку 3 секунды перед сигналом
+        QTimer::singleShot(3000, this, [this]() {
+            emit pvrReloaded(); // сигнал после 3 секунд
         });
-    }
+    });
 }
+

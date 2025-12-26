@@ -21,6 +21,9 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+signals:
+    void pvrReloaded(); // сигнал о завершении reloadPvrIptvSimple
+
 private slots:
     void on_horizontalSlider_valueChanged(int value);
 
