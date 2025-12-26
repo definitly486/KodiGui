@@ -996,7 +996,7 @@ void MainWindow::on_pushButton_16_clicked()
 
                         qDebug() << "File uploaded successfully:" << remoteFile;
 
-                        // 4️⃣ JSON-RPC в основном потоке
+                        // 4️⃣ Возврат в GUI-поток
                         if (!safeThis) return;
                         QMetaObject::invokeMethod(
                             safeThis,
@@ -1019,19 +1019,97 @@ void MainWindow::on_pushButton_16_clicked()
                                     [safeThis](const QJsonObject &) {
                                         if (!safeThis) return;
 
-                                        // Запуск PVR Scan
+                                        // PVR.Scan
                                         QJsonObject scan;
                                         scan["jsonrpc"] = "2.0";
                                         scan["method"]  = "PVR.Scan";
                                         scan["id"]      = safeThis->rpcId++;
 
-                                        safeThis->sendJsonRpc(scan, "PVR.Scan");
-                                    });
+                                        safeThis->sendJsonRpc(
+                                            scan,
+                                            "PVR.Scan",
+                                            [safeThis](const QJsonObject &) {
+                                                if (!safeThis) return;
+
+                                                // ⏱ Пауза 1 секунда после Scan
+                                                QTimer::singleShot(1000, safeThis, [safeThis]() {
+                                                    if (!safeThis) return;
+
+                                                    // ===== Disable → Enable → Play =====
+
+                                                    QJsonObject disable;
+                                                    disable["jsonrpc"] = "2.0";
+                                                    disable["method"]  = "Addons.SetAddonEnabled";
+                                                    disable["params"]  = QJsonObject{
+                                                        {"addonid", "pvr.iptvsimple"},
+                                                        {"enabled", false}
+                                                    };
+                                                    disable["id"] = safeThis->rpcId++;
+
+                                                    safeThis->sendJsonRpc(
+                                                        disable,
+                                                        "Disable pvr.iptvsimple",
+                                                        [safeThis](const QJsonObject &) {
+                                                            if (!safeThis) return;
+
+                                                            QTimer::singleShot(3000, safeThis, [safeThis]() {
+                                                                if (!safeThis) return;
+
+                                                                QJsonObject enableAgain;
+                                                                enableAgain["jsonrpc"] = "2.0";
+                                                                enableAgain["method"]  = "Addons.SetAddonEnabled";
+                                                                enableAgain["params"]  = QJsonObject{
+                                                                    {"addonid", "pvr.iptvsimple"},
+                                                                    {"enabled", true}
+                                                                };
+                                                                enableAgain["id"] = safeThis->rpcId++;
+
+                                                                safeThis->sendJsonRpc(
+                                                                    enableAgain,
+                                                                    "Enable pvr.iptvsimple",
+                                                                    [safeThis](const QJsonObject &) {
+                                                                        if (!safeThis) return;
+
+                                                                        QTimer::singleShot(1000, safeThis, [safeThis]() {
+                                                                            if (!safeThis) return;
+
+                                                                            QJsonObject play;
+                                                                            play["jsonrpc"] = "2.0";
+                                                                            play["method"]  = "Player.Open";
+                                                                            play["params"]  = QJsonObject{
+                                                                                {"item", QJsonObject{
+                                                                                             {"channelid", 1}
+                                                                                         }}
+                                                                            };
+                                                                            play["id"] = safeThis->rpcId++;
+
+                                                                            safeThis->sendJsonRpc(
+                                                                                play,
+                                                                                "Play channel",
+                                                                                [safeThis](const QJsonObject &) {
+                                                                                    if (!safeThis) return;
+                                                                                    qDebug() << "Channel 1 playback started";
+                                                                                }
+                                                                                );
+                                                                        });
+                                                                    }
+                                                                    );
+                                                            });
+                                                        }
+                                                        );
+                                                });
+                                            }
+                                            );
+                                    }
+                                    );
                             },
-                            Qt::QueuedConnection);
+                            Qt::QueuedConnection
+                            );
                     });
-                });
+                }
+                );
 }
+
 
 void MainWindow::on_getonairnow_clicked()
 {
@@ -1095,72 +1173,4 @@ void MainWindow::on_getonairnow_clicked()
 
     pythonProcess->start(pythonCmd, QStringList() << scriptPath);
 }
-
-void MainWindow::on_pushButton_17_clicked()
-{
-    QPointer<MainWindow> safeThis(this);
-
-    // 1️⃣ Disable pvr.iptvsimple
-    QJsonObject disable;
-    disable["jsonrpc"] = "2.0";
-    disable["method"]  = "Addons.SetAddonEnabled";
-    disable["params"]  = QJsonObject{
-        {"addonid", "pvr.iptvsimple"},
-        {"enabled", false}
-    };
-    disable["id"] = rpcId++;
-
-    sendJsonRpc(disable, "Disable pvr.iptvsimple",
-                [safeThis](const QJsonObject &) {
-                    if (!safeThis) return;
-
-                    // ⏱ Пауза 3 секунды перед включением
-                    QTimer::singleShot(3000, safeThis, [safeThis]() {
-                        if (!safeThis) return;
-
-                        // 2️⃣ Enable pvr.iptvsimple
-                        QJsonObject enable;
-                        enable["jsonrpc"] = "2.0";
-                        enable["method"]  = "Addons.SetAddonEnabled";
-                        enable["params"]  = QJsonObject{
-                            {"addonid", "pvr.iptvsimple"},
-                            {"enabled", true}
-                        };
-                        enable["id"] = safeThis->rpcId++;
-
-                        safeThis->sendJsonRpc(enable, "Enable pvr.iptvsimple",
-                                              [safeThis](const QJsonObject &) {
-                                                  if (!safeThis) return;
-
-                                                  qDebug() << "pvr.iptvsimple enabled";
-
-                                                  // ⏱ Пауза 1 секунда перед запуском канала
-                                                  QTimer::singleShot(1000, safeThis, [safeThis]() {
-                                                      if (!safeThis) return;
-
-                                                      // ▶️ 3️⃣ Play channel 1
-                                                      QJsonObject play;
-                                                      play["jsonrpc"] = "2.0";
-                                                      play["method"]  = "Player.Open";
-                                                      play["params"]  = QJsonObject{
-                                                          {"item", QJsonObject{
-                                                                       {"channelid", 1}
-                                                                   }}
-                                                      };
-                                                      play["id"] = safeThis->rpcId++;
-
-                                                      safeThis->sendJsonRpc(play, "Play channel",
-                                                                            [safeThis](const QJsonObject &) {
-                                                                                if (!safeThis) return;
-                                                                                qDebug() << "Channel 1 playback started";
-                                                                            }
-                                                                            );
-                                                  });
-                                              }
-                                              );
-                    });
-                }
-                );
-}
-
 

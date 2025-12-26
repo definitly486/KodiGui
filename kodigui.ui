@@ -420,12 +420,12 @@
        <rect>
         <x>170</x>
         <y>70</y>
-        <width>80</width>
+        <width>91</width>
         <height>23</height>
        </rect>
       </property>
       <property name="text">
-       <string>Play</string>
+       <string>upload m3u8</string>
       </property>
      </widget>
      <widget class="QTextBrowser" name="textBrowseronairnow">
