@@ -128,6 +128,13 @@ void MainWindow::on_pushButton_clicked()
 
 {
 
+    QNetworkAccessManager *mgr = new QNetworkAccessManager();
+    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    reloadPvrIptvSimple(mgr, 2);
+
     QString input = on_lineEdit_textChanged();
 
     qDebug()<< input;
@@ -308,6 +315,14 @@ QString  MainWindow::on_lineEdit_2_textChanged()
 
 void MainWindow::on_pushButton_7_clicked()
 {
+
+    QNetworkAccessManager *mgr = new QNetworkAccessManager();
+    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    reloadPvrIptvSimple(mgr, 2);
+
     QString input = on_lineEdit_2_textChanged();
 
     // Создаем файл
