@@ -425,7 +425,7 @@
        </rect>
       </property>
       <property name="text">
-       <string>upload m3u8</string>
+       <string>Play</string>
       </property>
      </widget>
      <widget class="QTextBrowser" name="textBrowseronairnow">
@@ -449,19 +449,6 @@
       </property>
       <property name="text">
        <string>Получить что сейчас в эфире</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_17">
-      <property name="geometry">
-       <rect>
-        <x>60</x>
-        <y>120</y>
-        <width>81</width>
-        <height>25</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Play </string>
       </property>
      </widget>
     </widget>

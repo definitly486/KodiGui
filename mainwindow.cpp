@@ -1174,3 +1174,5 @@ void MainWindow::on_getonairnow_clicked()
     pythonProcess->start(pythonCmd, QStringList() << scriptPath);
 }
 
+
+
