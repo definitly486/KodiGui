@@ -887,12 +887,16 @@ void MainWindow::on_pushButton_16_clicked()
 
     // 1️⃣ Создаём M3U
     QFile file(filePath);
-    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qCritical() << "Cannot create M3U file";
         return;
     }
-    QTextStream(&file) << "#EXTM3U\n" << "#EXTINF:-1,My Channel Name\n" << input << "\n";
+    QTextStream(&file)
+        << "#EXTM3U\n"
+        << "#EXTINF:-1,My Channel Name\n"
+        << input << "\n";
     file.close();
+
     qDebug() << "Temporary M3U created at" << filePath;
 
     QPointer<MainWindow> safeThis(this);
@@ -900,150 +904,133 @@ void MainWindow::on_pushButton_16_clicked()
     // 2️⃣ Останавливаем плеер
     QJsonObject stop;
     stop["jsonrpc"] = "2.0";
-    stop["method"] = "Player.Stop";
-    stop["params"] = QJsonObject{{"playerid", 1}};
-    stop["id"] = rpcId++;
+    stop["method"]  = "Player.Stop";
+    stop["params"]  = QJsonObject{{"playerid", 1}};
+    stop["id"]      = rpcId++;
 
-    sendJsonRpc(stop, "Player.Stop", [safeThis, filePath](const QJsonObject &){
-        if(!safeThis) return;
+    sendJsonRpc(stop, "Player.Stop",
+                [safeThis, filePath](const QJsonObject &) {
+                    if (!safeThis) return;
 
-        // 3️⃣ Асинхронный SFTP upload
-        QtConcurrent::run([safeThis, filePath]() {
-            const QString host = "192.168.8.45";
-            const int port = 22;
-            const QString user = "pi";
-            const QString password = "639639";
-            const QString remoteFile = "/var/www/html/list.m3u";
+                    // 3️⃣ Асинхронный SFTP upload
+                    QtConcurrent::run([safeThis, filePath]() {
 
-            // TCP socket
-            int sock = socket(AF_INET, SOCK_STREAM, 0);
-            if (sock < 0) { qDebug() << "Socket error"; return; }
+                        const QString host = "192.168.8.45";
+                        const int port = 22;
+                        const QString user = "pi";
+                        const QString password = "639639";
+                        const QString remoteFile = "/var/www/html/list.m3u";
 
-            struct sockaddr_in sin{};
-            sin.sin_family = AF_INET;
-            sin.sin_port = htons(port);
-            struct hostent* he = gethostbyname(host.toUtf8().constData());
-            if (!he) { ::close(sock); return; }
-            sin.sin_addr = *(struct in_addr*)he->h_addr;
+                        int sock = socket(AF_INET, SOCK_STREAM, 0);
+                        if (sock < 0) return;
 
-            if (::connect(sock, (struct sockaddr*)&sin, sizeof(sin)) != 0) { ::close(sock); return; }
+                        struct sockaddr_in sin{};
+                        sin.sin_family = AF_INET;
+                        sin.sin_port   = htons(port);
 
-            // libssh2 session
-            LIBSSH2_SESSION* session = libssh2_session_init();
-            if (!session) { ::close(sock); return; }
-            if (libssh2_session_handshake(session, sock)) { libssh2_session_free(session); ::close(sock); return; }
-            if (libssh2_userauth_password(session, user.toUtf8().constData(), password.toUtf8().constData())) {
-                libssh2_session_disconnect(session, "Bye");
-                libssh2_session_free(session);
-                ::close(sock);
-                return;
-            }
+                        struct hostent* he = gethostbyname(host.toUtf8().constData());
+                        if (!he) { ::close(sock); return; }
 
-            // SFTP
-            LIBSSH2_SFTP* sftp = libssh2_sftp_init(session);
-            if (!sftp) { libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return; }
+                        sin.sin_addr = *(struct in_addr*)he->h_addr;
 
-            LIBSSH2_SFTP_HANDLE* sftpHandle = libssh2_sftp_open(sftp,
-                remoteFile.toUtf8().constData(),
-                LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
-                LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR |
-                LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
+                        if (::connect(sock, (struct sockaddr*)&sin, sizeof(sin)) != 0) {
+                            ::close(sock);
+                            return;
+                        }
 
-            if (!sftpHandle) { libssh2_sftp_shutdown(sftp); libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return; }
+                        LIBSSH2_SESSION* session = libssh2_session_init();
+                        if (!session) { ::close(sock); return; }
 
-            QFile file(filePath);
-            if (!file.open(QIODevice::ReadOnly)) { libssh2_sftp_close(sftpHandle); libssh2_sftp_shutdown(sftp); libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return; }
-            QByteArray data = file.readAll();
-            libssh2_sftp_write(sftpHandle, data.constData(), data.size());
+                        if (libssh2_session_handshake(session, sock)) {
+                            libssh2_session_free(session);
+                            ::close(sock);
+                            return;
+                        }
 
-            libssh2_sftp_close(sftpHandle);
-            libssh2_sftp_shutdown(sftp);
-            libssh2_session_disconnect(session, "Bye");
-            libssh2_session_free(session);
-            ::close(sock);
+                        if (libssh2_userauth_password(
+                                session,
+                                user.toUtf8().constData(),
+                                password.toUtf8().constData())) {
 
-            qDebug() << "File uploaded successfully:" << remoteFile;
+                            libssh2_session_disconnect(session, "Bye");
+                            libssh2_session_free(session);
+                            ::close(sock);
+                            return;
+                        }
 
-            // 4️⃣ JSON-RPC в основном потоке
-            if (!safeThis) return;
-            QMetaObject::invokeMethod(safeThis, [safeThis]() {
+                        LIBSSH2_SFTP* sftp = libssh2_sftp_init(session);
+                        if (!sftp) {
+                            libssh2_session_disconnect(session, "Bye");
+                            libssh2_session_free(session);
+                            ::close(sock);
+                            return;
+                        }
 
-                // Включаем PVR
-                QJsonObject enable;
-                enable["jsonrpc"] = "2.0";
-                enable["method"] = "Addons.SetAddonEnabled";
-                enable["params"] = QJsonObject{{"addonid","pvr.iptvsimple"}, {"enabled", true}};
-                enable["id"] = safeThis->rpcId++;
+                        LIBSSH2_SFTP_HANDLE* handle =
+                            libssh2_sftp_open(
+                                sftp,
+                                remoteFile.toUtf8().constData(),
+                                LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
+                                LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR |
+                                    LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
 
-                safeThis->sendJsonRpc(enable, "Enable PVR", [safeThis](const QJsonObject &){
-                    if(!safeThis) return;
+                        if (!handle) {
+                            libssh2_sftp_shutdown(sftp);
+                            libssh2_session_disconnect(session, "Bye");
+                            libssh2_session_free(session);
+                            ::close(sock);
+                            return;
+                        }
 
-                    // Запуск PVR scan
-                    QJsonObject scan;
-                    scan["jsonrpc"]="2.0";
-                    scan["method"]="PVR.Scan";
-                    scan["id"]=safeThis->rpcId++;
-                    safeThis->sendJsonRpc(scan,"PVR scan");
+                        QFile file(filePath);
+                        if (file.open(QIODevice::ReadOnly)) {
+                            QByteArray data = file.readAll();
+                            libssh2_sftp_write(handle, data.constData(), data.size());
+                        }
 
-                    // Ждём появления каналов
-                    auto waitForChannels = std::make_shared<std::function<void(int)>>();
-                    *waitForChannels = [safeThis, waitForChannels](int attemptsLeft){
-                        if(!safeThis) return;
-                        QJsonObject getGroups;
-                        getGroups["jsonrpc"]="2.0";
-                        getGroups["method"]="PVR.GetChannelGroups";
-                        getGroups["id"]=safeThis->rpcId++;
+                        libssh2_sftp_close(handle);
+                        libssh2_sftp_shutdown(sftp);
+                        libssh2_session_disconnect(session, "Bye");
+                        libssh2_session_free(session);
+                        ::close(sock);
 
-                        safeThis->sendJsonRpc(getGroups,"Get Channel Groups",[safeThis, attemptsLeft, waitForChannels](const QJsonObject &resp){
-                            if(!safeThis) return;
-                            QJsonArray groups = resp["result"].toObject()["channelgroups"].toArray();
-                            if(!groups.isEmpty()) {
-                                QString groupId = groups.first().toObject()["channelgroupid"].toString();
+                        qDebug() << "File uploaded successfully:" << remoteFile;
 
-                                QJsonObject getChannels;
-                                getChannels["jsonrpc"]="2.0";
-                                getChannels["method"]="PVR.GetChannels";
-                                getChannels["params"]=QJsonObject{
-                                    {"channelgroupid", groupId},
-                                    {"properties", QJsonArray{"channelnumber","label"}}
+                        // 4️⃣ JSON-RPC в основном потоке
+                        if (!safeThis) return;
+                        QMetaObject::invokeMethod(
+                            safeThis,
+                            [safeThis]() {
+                                if (!safeThis) return;
+
+                                // Enable PVR
+                                QJsonObject enable;
+                                enable["jsonrpc"] = "2.0";
+                                enable["method"]  = "Addons.SetAddonEnabled";
+                                enable["params"]  = QJsonObject{
+                                    {"addonid", "pvr.iptvsimple"},
+                                    {"enabled", true}
                                 };
-                                getChannels["id"]=safeThis->rpcId++;
+                                enable["id"] = safeThis->rpcId++;
 
-                                safeThis->sendJsonRpc(getChannels,"Get Channels",[safeThis](const QJsonObject &resp){
-                                    if(!safeThis) return;
-                                    QJsonArray channels = resp["result"].toObject()["channels"].toArray();
-                                    int channelId = 1;
-                                    if(!channels.isEmpty()){
-                                        channelId = channels.first().toObject()["channelid"].toInt();
-                                        qDebug()<<"Opening first PVR channel:"<<channels.first().toObject()["label"].toString();
-                                    }
-                                    QJsonObject play;
-                                    play["jsonrpc"]="2.0";
-                                    play["method"]="Player.Open";
-                                    play["params"]=QJsonObject{{"item", QJsonObject{{"channelid",channelId}}}};
-                                    play["id"]=safeThis->rpcId++;
-                                    safeThis->sendJsonRpc(play,"Player.Open");
-                                });
-                            } else if(attemptsLeft>1){
-                                QTimer::singleShot(1000,safeThis,[waitForChannels,attemptsLeft](){(*waitForChannels)(attemptsLeft-1);});
-                            } else {
-                                QJsonObject play;
-                                play["jsonrpc"]="2.0";
-                                play["method"]="Player.Open";
-                                play["params"]=QJsonObject{{"item", QJsonObject{{"channelid",1}}}};
-                                play["id"]=safeThis->rpcId++;
-                                safeThis->sendJsonRpc(play,"Player.Open");
-                            }
-                        });
-                    };
-                    (*waitForChannels)(3);
+                                safeThis->sendJsonRpc(
+                                    enable,
+                                    "Enable PVR",
+                                    [safeThis](const QJsonObject &) {
+                                        if (!safeThis) return;
+
+                                        // Запуск PVR Scan
+                                        QJsonObject scan;
+                                        scan["jsonrpc"] = "2.0";
+                                        scan["method"]  = "PVR.Scan";
+                                        scan["id"]      = safeThis->rpcId++;
+
+                                        safeThis->sendJsonRpc(scan, "PVR.Scan");
+                                    });
+                            },
+                            Qt::QueuedConnection);
+                    });
                 });
-
-            }, Qt::QueuedConnection);
-
-        });
-
-    });
 }
 
 void MainWindow::on_getonairnow_clicked()
@@ -1108,3 +1095,72 @@ void MainWindow::on_getonairnow_clicked()
 
     pythonProcess->start(pythonCmd, QStringList() << scriptPath);
 }
+
+void MainWindow::on_pushButton_17_clicked()
+{
+    QPointer<MainWindow> safeThis(this);
+
+    // 1️⃣ Disable pvr.iptvsimple
+    QJsonObject disable;
+    disable["jsonrpc"] = "2.0";
+    disable["method"]  = "Addons.SetAddonEnabled";
+    disable["params"]  = QJsonObject{
+        {"addonid", "pvr.iptvsimple"},
+        {"enabled", false}
+    };
+    disable["id"] = rpcId++;
+
+    sendJsonRpc(disable, "Disable pvr.iptvsimple",
+                [safeThis](const QJsonObject &) {
+                    if (!safeThis) return;
+
+                    // ⏱ Пауза 3 секунды перед включением
+                    QTimer::singleShot(3000, safeThis, [safeThis]() {
+                        if (!safeThis) return;
+
+                        // 2️⃣ Enable pvr.iptvsimple
+                        QJsonObject enable;
+                        enable["jsonrpc"] = "2.0";
+                        enable["method"]  = "Addons.SetAddonEnabled";
+                        enable["params"]  = QJsonObject{
+                            {"addonid", "pvr.iptvsimple"},
+                            {"enabled", true}
+                        };
+                        enable["id"] = safeThis->rpcId++;
+
+                        safeThis->sendJsonRpc(enable, "Enable pvr.iptvsimple",
+                                              [safeThis](const QJsonObject &) {
+                                                  if (!safeThis) return;
+
+                                                  qDebug() << "pvr.iptvsimple enabled";
+
+                                                  // ⏱ Пауза 1 секунда перед запуском канала
+                                                  QTimer::singleShot(1000, safeThis, [safeThis]() {
+                                                      if (!safeThis) return;
+
+                                                      // ▶️ 3️⃣ Play channel 1
+                                                      QJsonObject play;
+                                                      play["jsonrpc"] = "2.0";
+                                                      play["method"]  = "Player.Open";
+                                                      play["params"]  = QJsonObject{
+                                                          {"item", QJsonObject{
+                                                                       {"channelid", 1}
+                                                                   }}
+                                                      };
+                                                      play["id"] = safeThis->rpcId++;
+
+                                                      safeThis->sendJsonRpc(play, "Play channel",
+                                                                            [safeThis](const QJsonObject &) {
+                                                                                if (!safeThis) return;
+                                                                                qDebug() << "Channel 1 playback started";
+                                                                            }
+                                                                            );
+                                                  });
+                                              }
+                                              );
+                    });
+                }
+                );
+}
+
+
