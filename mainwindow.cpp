@@ -16,17 +16,19 @@
 #include <QDebug>
 #include <QRegularExpression>
 #include <QMessageBox>
-
 #include <QFile>
-
 #include <QFile>
 #include <QTextStream>
-
+#include <QJsonObject>
+#include <QTimer>
+#include <QJsonArray>
+#include <functional>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , pythonProcess(new QProcess(this))        // ← обязательно this!
+    , manager(new QNetworkAccessManager(this))  // <-- создаём здесь!
 {
     ui->setupUi(this);
 }
@@ -119,73 +121,173 @@ void MainWindow::on_horizontalSlider_valueChanged(int value)
 
 }
 
+void MainWindow::sendJsonRpc(
+    const QJsonObject &json,
+    const QString &desc,
+    std::function<void(const QJsonObject&)> onSuccess)
+{
+    QNetworkRequest request(QUrl("http://192.168.8.45:8081/jsonrpc"));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
+    QNetworkReply *reply = manager->post(
+        request,
+        QJsonDocument(json).toJson()
+        );
 
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << desc << "failed:" << reply->errorString();
+            reply->deleteLater();
+            return;
+        }
 
-#include <QProcess>
-#include <QFile>
-#include <QTextStream>
-#include <QDebug>
-#include <QThread>
+        QJsonObject response =
+            QJsonDocument::fromJson(reply->readAll()).object();
+
+        qDebug() << desc << "OK";
+
+        if (onSuccess)
+            onSuccess(response);
+
+        reply->deleteLater();
+    });
+}
 
 void MainWindow::on_pushButton_clicked()
 {
     // Берём текст из lineEdit
     QString input = ui->lineEdit->text();
-    qDebug() << "Input:" << input;
+    QString filePath = "/tmp/list.m3u";
 
-    // 1. Удаляем файл /tmp/list.m3u
-    QFile::remove("/tmp/list.m3u");
-
-    // 2. Получаем поток через streamlink
-    QProcess streamlinkProcess;
-    streamlinkProcess.start("streamlink", QStringList() << "--stream-url" << input << "480p");
-    streamlinkProcess.waitForFinished();
-    QString m3u = streamlinkProcess.readAllStandardOutput().trimmed();
-
-    if(m3u.isEmpty()) {
-        qDebug() << "Failed to get stream URL";
+    // 1️⃣ Создаём M3U
+    QFile file(filePath);
+    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qCritical() << "Cannot create M3U file";
         return;
     }
+    QTextStream(&file)
+        << "#EXTM3U\n"
+        << "#EXTINF:-1,My Channel Name\n"
+        << input << "\n";
+    file.close();
+    qDebug() << "Temporary M3U created at" << filePath;
 
-    // 3. Записываем в /tmp/list.m3u
-    QFile file("/tmp/list.m3u");
-    if(file.open(QIODevice::WriteOnly | QIODevice::Text))
+    // 2️⃣ Останавливаем плеер
+    QJsonObject stop;
+    stop["jsonrpc"] = "2.0";
+    stop["method"] = "Player.Stop";
+    stop["params"] = QJsonObject{{"playerid", 1}};
+    stop["id"] = rpcId++;
+    sendJsonRpc(stop, "Player.Stop", [=](const QJsonObject &)
     {
-        QTextStream out(&file);
-        out << m3u << "|user-agent=Mozilla/5.0 (X11; FreeBSD amd64; rv:77.0) Gecko/20100101 Firefox/77.0\n";
-        file.close();
-    }
-    else
-    {
-        qDebug() << "Failed to open /tmp/list.m3u for writing";
-        return;
-    }
+        // 3️⃣ Копируем M3U на веб-сервер через SCP
+        QProcess *scp = new QProcess(this);
+        connect(scp, &QProcess::finished, this, [=]()
+        {
+            // 4️⃣ Включаем PVR аддон
+            QJsonObject enable;
+            enable["jsonrpc"] = "2.0";
+            enable["method"] = "Addons.SetAddonEnabled";
+            enable["params"] = QJsonObject{{"addonid","pvr.iptvsimple"}, {"enabled", true}};
+            enable["id"] = rpcId++;
+            sendJsonRpc(enable, "Enable PVR", [=](const QJsonObject &)
+            {
+                // 5️⃣ Запускаем PVR scan
+                QJsonObject scan;
+                scan["jsonrpc"] = "2.0";
+                scan["method"] = "PVR.Scan";
+                scan["id"] = rpcId++;
+                sendJsonRpc(scan, "PVR scan");
 
-    // 4. Остановка плеера через JSON-RPC
-    QProcess::execute("curl", QStringList() << "-X" << "POST"
-                                            << "-H" << "Content-Type: application/json"
-                                            << "-d" << R"({"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1})"
-                                            << "http://192.168.8.45:8081/jsonrpc");
+                // 6️⃣ Ждём появления каналов с лимитом 3 попытки
+                auto waitForChannels = std::make_shared<std::function<void(int)>>();
 
-    QThread::sleep(3);
+                *waitForChannels = [=](int attemptsLeft)
+                {
+                    QJsonObject getGroups;
+                    getGroups["jsonrpc"] = "2.0";
+                    getGroups["method"] = "PVR.GetChannelGroups";
+                    getGroups["id"] = rpcId++;
 
-    // 5. Перезагрузка плейлиста (две команды reloadlist)
-    QProcess::execute("reloadlist");
-    QProcess::execute("reloadlist");
+                    sendJsonRpc(getGroups, "Get Channel Groups", [=](const QJsonObject &resp)
+                    {
+                        QJsonArray groups = resp["result"].toObject()["channelgroups"].toArray();
 
-    QThread::sleep(3);
+                        if(!groups.isEmpty())
+                        {
+                            QString channelGroupId = groups.first().toObject()["channelgroupid"].toString();
 
-    // 6. Воспроизведение канала через JSON-RPC
-    QString PLAY = R"({"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"channelid":1}}})";
-    QProcess::execute("curl", QStringList() << "-X" << "POST"
-                                            << "-H" << "Content-Type: application/json"
-                                            << "-d" << PLAY
-                                            << "http://192.168.8.45:8081/jsonrpc");
+                            QJsonObject getChannels;
+                            getChannels["jsonrpc"] = "2.0";
+                            getChannels["method"] = "PVR.GetChannels";
+                            getChannels["params"] = QJsonObject{
+                                {"channelgroupid", channelGroupId},
+                                {"properties", QJsonArray{"channelnumber","label"}}
+                            };
+                            getChannels["id"] = rpcId++;
 
-    qDebug() << "Stream processing finished";
-}
+                            sendJsonRpc(getChannels, "Get Channels", [=](const QJsonObject &resp)
+                            {
+                                QJsonArray channels = resp["result"].toObject()["channels"].toArray();
+                                if(channels.isEmpty() && attemptsLeft > 1)
+                                {
+                                    qDebug() << "No channels yet, retrying...";
+                                    QTimer::singleShot(1000, this, [waitForChannels, attemptsLeft]()
+                                    {
+                                        (*waitForChannels)(attemptsLeft - 1);
+                                    });
+                                    return;
+                                }
 
+                                // 🔹 Открываем первый канал (если пусто, используем M3U напрямую)
+                                int channelId = 1; // дефолт для Player.Open
+                                if(!channels.isEmpty()) {
+                                    channelId = channels.first().toObject()["channelid"].toInt();
+                                    qDebug() << "Opening first PVR channel:" << channels.first().toObject()["label"].toString();
+                                } else {
+                                    qDebug() << "No PVR channels found, opening default first channel from M3U";
+                                }
+
+                                QJsonObject play;
+                                play["jsonrpc"] = "2.0";
+                                play["method"] = "Player.Open";
+                                play["params"] = QJsonObject{{"item", QJsonObject{{"channelid", channelId}}}};
+                                play["id"] = rpcId++;
+                                sendJsonRpc(play, "Player.Open");
+                            });
+                        }
+                        else
+                        {
+                            if(attemptsLeft > 1)
+                            {
+                                qDebug() << "No channel groups yet, retrying...";
+                                QTimer::singleShot(1000, this, [waitForChannels, attemptsLeft]()
+                                {
+                                    (*waitForChannels)(attemptsLeft - 1);
+                                });
+                                return;
+                            }
+
+                            // После 3 попыток — открываем первый канал из M3U
+                            qDebug() << "No channel groups after 3 attempts, opening default first channel from M3U";
+                            QJsonObject play;
+                            play["jsonrpc"] = "2.0";
+                            play["method"] = "Player.Open";
+                            play["params"] = QJsonObject{{"item", QJsonObject{{"channelid", 1}}}};
+                            play["id"] = rpcId++;
+                            sendJsonRpc(play, "Player.Open");
+                        }
+                    });
+                };
+
+                // Запуск ожидания каналов: 3 попытки
+                (*waitForChannels)(3);
+            }); // end sendJsonRpc Enable PVR
+        }); // end connect scp finished
+
+        scp->start("sshpass", {"-p", "639639", "scp", filePath, "pi@192.168.8.45:/var/www/html"});
+    }); // end sendJsonRpc Player.Stop
+} // end on_playurl_clicked
 
 
 QString  MainWindow::on_lineEdit_textChanged()
@@ -342,53 +444,117 @@ void MainWindow::on_pushButton_7_clicked()
 {
     // Берём текст из lineEdit_2
     QString input = ui->lineEdit_2->text();
-    qDebug() << "Input:" << input;
-
-    // 1. Создаём файл /tmp/list.m3u
     QString filePath = "/tmp/list.m3u";
+
+    // 1️⃣ Создаём M3U
     QFile file(filePath);
-    if(file.open(QIODevice::WriteOnly | QIODevice::Text))
-    {
-        QTextStream out(&file);
-        out << input << "|user-agent=Mozilla/5.0 (X11; FreeBSD amd64; rv:77.0) Gecko/20100101 Firefox/77.0\n";
-        file.close();
-    }
-    else
-    {
-        qDebug() << "Failed to open file for writing:" << filePath;
+    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qCritical() << "Cannot create M3U file";
         return;
     }
+    QTextStream(&file) << "#EXTM3U\n" << "#EXTINF:-1,My Channel Name\n" << input << "\n";
+    file.close();
+    qDebug() << "Temporary M3U created at" << filePath;
 
-    // 2. Отправляем JSON-RPC запрос для остановки плеера
-    QProcess::execute("curl", QStringList() << "-X" << "POST"
-                                            << "-H" << "Content-Type: application/json"
-                                            << "-d" << R"({"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1})"
-                                            << "http://192.168.8.45:8081/jsonrpc");
+    QPointer<MainWindow> safeThis(this);
 
-    QThread::sleep(3);
+    // 2️⃣ Останавливаем плеер
+    QJsonObject stop;
+    stop["jsonrpc"] = "2.0";
+    stop["method"] = "Player.Stop";
+    stop["params"] = QJsonObject{{"playerid", 1}};
+    stop["id"] = rpcId++;
 
-    // 3. Копируем файл на Raspberry Pi через scp
-    QProcess::execute("sshpass", QStringList() << "-p" << "639639"
-                                               << "scp" << filePath << "pi@192.168.8.45:/var/www/html");
+    sendJsonRpc(stop, "Player.Stop", [safeThis, filePath](const QJsonObject &) {
+        if (!safeThis) return;
 
-    // 4. Включаем/выключаем аддон
-    QString JSON = R"({"jsonrpc":"2.0","method":"Addons.SetAddonEnabled","params":{"addonid":"pvr.iptvsimple","enabled":"toggle"},"id":1})";
-    QString URL = "http://192.168.8.45:8081/jsonrpc";
-    QProcess::execute("curl", QStringList() << "-s" << "-X" << "POST"
-                                            << "-H" << "Content-Type: application/json"
-                                            << "-d" << JSON
-                                            << URL);
+        // 3️⃣ SCP
+        QProcess *scp = new QProcess(safeThis);
+        scp->setProgram("sshpass");
+        scp->setArguments({"-p","639639","scp",filePath,"pi@192.168.8.45:/var/www/html"});
+        scp->start();
 
-    QThread::sleep(3);
+        QObject::connect(scp, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                         safeThis, [safeThis, scp](int exitCode, QProcess::ExitStatus){
+                             if (!safeThis) return;
+                             scp->deleteLater();
+                             if(exitCode != 0) {
+                                 qDebug() << "SCP failed!";
+                                 return;
+                             }
 
-    // 5. Воспроизводим канал (например, channelid = 1)
-    QString PLAY = R"({"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"channelid":1}}})";
-    QProcess::execute("curl", QStringList() << "-X" << "POST"
-                                            << "-H" << "Content-Type: application/json"
-                                            << "-d" << PLAY
-                                            << URL);
+                             // 4️⃣ Включаем PVR
+                             QJsonObject enable;
+                             enable["jsonrpc"] = "2.0";
+                             enable["method"] = "Addons.SetAddonEnabled";
+                             enable["params"] = QJsonObject{{"addonid","pvr.iptvsimple"}, {"enabled", true}};
+                             enable["id"] = safeThis->rpcId++;
 
-    qDebug() << "Commands executed successfully";
+                             safeThis->sendJsonRpc(enable, "Enable PVR", [safeThis](const QJsonObject &){
+                                 if(!safeThis) return;
+
+                                 // 5️⃣ Запускаем PVR scan
+                                 QJsonObject scan;
+                                 scan["jsonrpc"]="2.0";
+                                 scan["method"]="PVR.Scan";
+                                 scan["id"]=safeThis->rpcId++;
+                                 safeThis->sendJsonRpc(scan,"PVR scan");
+
+                                 // 6️⃣ Ждём появления каналов
+                                 auto waitForChannels = std::make_shared<std::function<void(int)>>();
+                                 *waitForChannels = [safeThis, waitForChannels](int attemptsLeft){
+                                     if(!safeThis) return;
+                                     QJsonObject getGroups;
+                                     getGroups["jsonrpc"]="2.0";
+                                     getGroups["method"]="PVR.GetChannelGroups";
+                                     getGroups["id"]=safeThis->rpcId++;
+
+                                     safeThis->sendJsonRpc(getGroups,"Get Channel Groups",[safeThis, attemptsLeft, waitForChannels](const QJsonObject &resp){
+                                         if(!safeThis) return;
+                                         QJsonArray groups = resp["result"].toObject()["channelgroups"].toArray();
+                                         if(!groups.isEmpty()) {
+                                             QString groupId = groups.first().toObject()["channelgroupid"].toString();
+
+                                             QJsonObject getChannels;
+                                             getChannels["jsonrpc"]="2.0";
+                                             getChannels["method"]="PVR.GetChannels";
+                                             getChannels["params"]=QJsonObject{
+                                                 {"channelgroupid", groupId},
+                                                 {"properties", QJsonArray{"channelnumber","label"}}
+                                             };
+                                             getChannels["id"]=safeThis->rpcId++;
+
+                                             safeThis->sendJsonRpc(getChannels,"Get Channels",[safeThis](const QJsonObject &resp){
+                                                 if(!safeThis) return;
+                                                 QJsonArray channels = resp["result"].toObject()["channels"].toArray();
+                                                 int channelId = 1;
+                                                 if(!channels.isEmpty()){
+                                                     channelId = channels.first().toObject()["channelid"].toInt();
+                                                     qDebug()<<"Opening first PVR channel:"<<channels.first().toObject()["label"].toString();
+                                                 }
+                                                 QJsonObject play;
+                                                 play["jsonrpc"]="2.0";
+                                                 play["method"]="Player.Open";
+                                                 play["params"]=QJsonObject{{"item", QJsonObject{{"channelid",channelId}}}};
+                                                 play["id"]=safeThis->rpcId++;
+                                                 safeThis->sendJsonRpc(play,"Player.Open");
+                                             });
+                                         } else if(attemptsLeft>1){
+                                             QTimer::singleShot(1000,safeThis,[waitForChannels,attemptsLeft](){(*waitForChannels)(attemptsLeft-1);});
+                                         } else {
+                                             QJsonObject play;
+                                             play["jsonrpc"]="2.0";
+                                             play["method"]="Player.Open";
+                                             play["params"]=QJsonObject{{"item", QJsonObject{{"channelid",1}}}};
+                                             play["id"]=safeThis->rpcId++;
+                                             safeThis->sendJsonRpc(play,"Player.Open");
+                                         }
+                                     });
+                                 };
+                                 (*waitForChannels)(3);
+                             });
+                         });
+    });
 }
 
 
@@ -760,66 +926,121 @@ QUrl url("https://matchtv.ru/on-air");
 
 }
 
-
-//запуск матч тв
-#include <QProcess>
-#include <QFile>
-#include <QTextStream>
-#include <QDebug>
-
 void MainWindow::on_pushButton_16_clicked()
 {
     QString input = ui->lineEdit_4->text();
-    qDebug() << "Input:" << input;
-
-    // 1. Создание файла /tmp/list.m3u
     QString filePath = "/tmp/list.m3u";
+
+    // 1️⃣ Создаём M3U
     QFile file(filePath);
-    if(file.open(QIODevice::WriteOnly | QIODevice::Text))
-    {
-        QTextStream out(&file);
-        out << input << "|user-agent=Mozilla/5.0 (X11; FreeBSD amd64; rv:77.0) Gecko/20100101 Firefox/77.0\n";
-        file.close();
-    }
-    else
-    {
-        qDebug() << "Failed to open file for writing:" << filePath;
+    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qCritical() << "Cannot create M3U file";
         return;
     }
+    QTextStream(&file) << "#EXTM3U\n" << "#EXTINF:-1,My Channel Name\n" << input << "\n";
+    file.close();
+    qDebug() << "Temporary M3U created at" << filePath;
 
-    // 2. Отправка JSON-RPC запроса для остановки плеера
-    QProcess::execute("curl", QStringList() << "-X" << "POST"
-                                            << "-H" << "Content-Type: application/json"
-                                            << "-d" << R"({"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1})"
-                                            << "http://192.168.8.45:8081/jsonrpc");
+    QPointer<MainWindow> safeThis(this);
 
-    QThread::sleep(3);
+    // 2️⃣ Останавливаем плеер
+    QJsonObject stop;
+    stop["jsonrpc"] = "2.0";
+    stop["method"] = "Player.Stop";
+    stop["params"] = QJsonObject{{"playerid", 1}};
+    stop["id"] = rpcId++;
 
-    // 3. Копирование файла на Raspberry Pi через scp
-    QProcess::execute("sshpass", QStringList() << "-p" << "639639"
-                                               << "scp" << filePath << "pi@192.168.8.45:/var/www/html");
+    sendJsonRpc(stop, "Player.Stop", [safeThis, filePath](const QJsonObject &) {
+        if (!safeThis) return;
 
-    // 4. Включение/выключение аддона
-    QString JSON = R"({"jsonrpc":"2.0","method":"Addons.SetAddonEnabled","params":{"addonid":"pvr.iptvsimple","enabled":"toggle"},"id":1})";
-    QString URL = "http://192.168.8.45:8081/jsonrpc";
-    QProcess::execute("curl", QStringList() << "-s" << "-X" << "POST"
-                                            << "-H" << "Content-Type: application/json"
-                                            << "-d" << JSON
-                                            << URL);
+        // 3️⃣ SCP
+        QProcess *scp = new QProcess(safeThis);
+        scp->setProgram("sshpass");
+        scp->setArguments({"-p","639639","scp",filePath,"pi@192.168.8.45:/var/www/html"});
+        scp->start();
 
-    QThread::sleep(3);
+        QObject::connect(scp, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                         safeThis, [safeThis, scp](int exitCode, QProcess::ExitStatus){
+            if (!safeThis) return;
+            scp->deleteLater();
+            if(exitCode != 0) {
+                qDebug() << "SCP failed!";
+                return;
+            }
 
-    // 5. Воспроизведение канала (пример с channelid = 1)
-    QString PLAY = R"({"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"channelid":1}}})";
-    QProcess::execute("curl", QStringList() << "-X" << "POST"
-                                            << "-H" << "Content-Type: application/json"
-                                            << "-d" << PLAY
-                                            << URL);
+            // 4️⃣ Включаем PVR
+            QJsonObject enable;
+            enable["jsonrpc"] = "2.0";
+            enable["method"] = "Addons.SetAddonEnabled";
+            enable["params"] = QJsonObject{{"addonid","pvr.iptvsimple"}, {"enabled", true}};
+            enable["id"] = safeThis->rpcId++;
 
-    qDebug() << "Commands executed successfully";
+            safeThis->sendJsonRpc(enable, "Enable PVR", [safeThis](const QJsonObject &){
+                if(!safeThis) return;
+
+                // 5️⃣ Запускаем PVR scan
+                QJsonObject scan;
+                scan["jsonrpc"]="2.0";
+                scan["method"]="PVR.Scan";
+                scan["id"]=safeThis->rpcId++;
+                safeThis->sendJsonRpc(scan,"PVR scan");
+
+                // 6️⃣ Ждём появления каналов
+                auto waitForChannels = std::make_shared<std::function<void(int)>>();
+                *waitForChannels = [safeThis, waitForChannels](int attemptsLeft){
+                    if(!safeThis) return;
+                    QJsonObject getGroups;
+                    getGroups["jsonrpc"]="2.0";
+                    getGroups["method"]="PVR.GetChannelGroups";
+                    getGroups["id"]=safeThis->rpcId++;
+
+                    safeThis->sendJsonRpc(getGroups,"Get Channel Groups",[safeThis, attemptsLeft, waitForChannels](const QJsonObject &resp){
+                        if(!safeThis) return;
+                        QJsonArray groups = resp["result"].toObject()["channelgroups"].toArray();
+                        if(!groups.isEmpty()) {
+                            QString groupId = groups.first().toObject()["channelgroupid"].toString();
+
+                            QJsonObject getChannels;
+                            getChannels["jsonrpc"]="2.0";
+                            getChannels["method"]="PVR.GetChannels";
+                            getChannels["params"]=QJsonObject{
+                                {"channelgroupid", groupId},
+                                {"properties", QJsonArray{"channelnumber","label"}}
+                            };
+                            getChannels["id"]=safeThis->rpcId++;
+
+                            safeThis->sendJsonRpc(getChannels,"Get Channels",[safeThis](const QJsonObject &resp){
+                                if(!safeThis) return;
+                                QJsonArray channels = resp["result"].toObject()["channels"].toArray();
+                                int channelId = 1;
+                                if(!channels.isEmpty()){
+                                    channelId = channels.first().toObject()["channelid"].toInt();
+                                    qDebug()<<"Opening first PVR channel:"<<channels.first().toObject()["label"].toString();
+                                }
+                                QJsonObject play;
+                                play["jsonrpc"]="2.0";
+                                play["method"]="Player.Open";
+                                play["params"]=QJsonObject{{"item", QJsonObject{{"channelid",channelId}}}};
+                                play["id"]=safeThis->rpcId++;
+                                safeThis->sendJsonRpc(play,"Player.Open");
+                            });
+                        } else if(attemptsLeft>1){
+                            QTimer::singleShot(1000,safeThis,[waitForChannels,attemptsLeft](){(*waitForChannels)(attemptsLeft-1);});
+                        } else {
+                            QJsonObject play;
+                            play["jsonrpc"]="2.0";
+                            play["method"]="Player.Open";
+                            play["params"]=QJsonObject{{"item", QJsonObject{{"channelid",1}}}};
+                            play["id"]=safeThis->rpcId++;
+                            safeThis->sendJsonRpc(play,"Player.Open");
+                        }
+                    });
+                };
+                (*waitForChannels)(3);
+            });
+        });
+    });
 }
-
-
 
 void MainWindow::on_getonairnow_clicked()
 {

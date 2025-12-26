@@ -3,6 +3,11 @@
 
 #include <QMainWindow>
 #include <QProcess>
+#include <QString>
+#include <QNetworkAccessManager>  // <-- обязательно для QNetworkAccessManager
+#include <QNetworkReply>
+#include <QNetworkRequest>
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -67,6 +72,14 @@ private slots:
 
  private:
  Ui::MainWindow *ui;
-QProcess *pythonProcess;        // ← вот это
+ QProcess *pythonProcess;        // ← вот это
+   QNetworkAccessManager *manager;
+    int rpcId = 1;
+
+    void sendJsonRpc(
+        const QJsonObject &json,
+        const QString &desc,
+        std::function<void(const QJsonObject&)> onSuccess = nullptr
+    );
 };
 #endif // MAINWINDOW_H
