@@ -122,33 +122,70 @@ void MainWindow::on_horizontalSlider_valueChanged(int value)
 
 
 
+#include <QProcess>
+#include <QFile>
+#include <QTextStream>
+#include <QDebug>
+#include <QThread>
+
 void MainWindow::on_pushButton_clicked()
-
 {
+    // Берём текст из lineEdit
+    QString input = ui->lineEdit->text();
+    qDebug() << "Input:" << input;
 
-    QString input = on_lineEdit_textChanged();
+    // 1. Удаляем файл /tmp/list.m3u
+    QFile::remove("/tmp/list.m3u");
 
-    qDebug()<< input;
+    // 2. Получаем поток через streamlink
+    QProcess streamlinkProcess;
+    streamlinkProcess.start("streamlink", QStringList() << "--stream-url" << input << "480p");
+    streamlinkProcess.waitForFinished();
+    QString m3u = streamlinkProcess.readAllStandardOutput().trimmed();
 
-    QProcess process;
+    if(m3u.isEmpty()) {
+        qDebug() << "Failed to get stream URL";
+        return;
+    }
 
-    QStringList arguments;
+    // 3. Записываем в /tmp/list.m3u
+    QFile file("/tmp/list.m3u");
+    if(file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QTextStream out(&file);
+        out << m3u << "|user-agent=Mozilla/5.0 (X11; FreeBSD amd64; rv:77.0) Gecko/20100101 Firefox/77.0\n";
+        file.close();
+    }
+    else
+    {
+        qDebug() << "Failed to open /tmp/list.m3u for writing";
+        return;
+    }
 
-    arguments << input;
+    // 4. Остановка плеера через JSON-RPC
+    QProcess::execute("curl", QStringList() << "-X" << "POST"
+                                            << "-H" << "Content-Type: application/json"
+                                            << "-d" << R"({"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1})"
+                                            << "http://192.168.8.45:8081/jsonrpc");
 
-    QStringList anotherList = {input};
+    QThread::sleep(3);
 
-    QString program = "kodidlp";
+    // 5. Перезагрузка плейлиста (две команды reloadlist)
+    QProcess::execute("reloadlist");
+    QProcess::execute("reloadlist");
 
-    process.setProgram(program);
+    QThread::sleep(3);
 
-    process.setArguments(anotherList);
+    // 6. Воспроизведение канала через JSON-RPC
+    QString PLAY = R"({"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"channelid":1}}})";
+    QProcess::execute("curl", QStringList() << "-X" << "POST"
+                                            << "-H" << "Content-Type: application/json"
+                                            << "-d" << PLAY
+                                            << "http://192.168.8.45:8081/jsonrpc");
 
-    process.start();
-
-    process.waitForFinished();
-
+    qDebug() << "Stream processing finished";
 }
+
 
 
 QString  MainWindow::on_lineEdit_textChanged()
@@ -303,29 +340,57 @@ QString  MainWindow::on_lineEdit_2_textChanged()
 
 void MainWindow::on_pushButton_7_clicked()
 {
-    QString input = on_lineEdit_2_textChanged();
+    // Берём текст из lineEdit_2
+    QString input = ui->lineEdit_2->text();
+    qDebug() << "Input:" << input;
 
-    qDebug()<< input;
+    // 1. Создаём файл /tmp/list.m3u
+    QString filePath = "/tmp/list.m3u";
+    QFile file(filePath);
+    if(file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QTextStream out(&file);
+        out << input << "|user-agent=Mozilla/5.0 (X11; FreeBSD amd64; rv:77.0) Gecko/20100101 Firefox/77.0\n";
+        file.close();
+    }
+    else
+    {
+        qDebug() << "Failed to open file for writing:" << filePath;
+        return;
+    }
 
-    QProcess process;
+    // 2. Отправляем JSON-RPC запрос для остановки плеера
+    QProcess::execute("curl", QStringList() << "-X" << "POST"
+                                            << "-H" << "Content-Type: application/json"
+                                            << "-d" << R"({"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1})"
+                                            << "http://192.168.8.45:8081/jsonrpc");
 
-    QStringList arguments;
+    QThread::sleep(3);
 
-    arguments << input;
+    // 3. Копируем файл на Raspberry Pi через scp
+    QProcess::execute("sshpass", QStringList() << "-p" << "639639"
+                                               << "scp" << filePath << "pi@192.168.8.45:/var/www/html");
 
-    QStringList anotherList = {input};
+    // 4. Включаем/выключаем аддон
+    QString JSON = R"({"jsonrpc":"2.0","method":"Addons.SetAddonEnabled","params":{"addonid":"pvr.iptvsimple","enabled":"toggle"},"id":1})";
+    QString URL = "http://192.168.8.45:8081/jsonrpc";
+    QProcess::execute("curl", QStringList() << "-s" << "-X" << "POST"
+                                            << "-H" << "Content-Type: application/json"
+                                            << "-d" << JSON
+                                            << URL);
 
-    QString program = "echoplaylist";
+    QThread::sleep(3);
 
-    process.setProgram(program);
+    // 5. Воспроизводим канал (например, channelid = 1)
+    QString PLAY = R"({"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"channelid":1}}})";
+    QProcess::execute("curl", QStringList() << "-X" << "POST"
+                                            << "-H" << "Content-Type: application/json"
+                                            << "-d" << PLAY
+                                            << URL);
 
-    process.setArguments(anotherList);
-
-    process.start();
-
-    process.waitForFinished();
-
+    qDebug() << "Commands executed successfully";
 }
+
 
 
 void MainWindow::on_pushButton_9_clicked()
@@ -697,33 +762,63 @@ QUrl url("https://matchtv.ru/on-air");
 
 
 //запуск матч тв
+#include <QProcess>
+#include <QFile>
+#include <QTextStream>
+#include <QDebug>
+
 void MainWindow::on_pushButton_16_clicked()
 {
-
-
     QString input = ui->lineEdit_4->text();
+    qDebug() << "Input:" << input;
 
-    qDebug()<< input;
+    // 1. Создание файла /tmp/list.m3u
+    QString filePath = "/tmp/list.m3u";
+    QFile file(filePath);
+    if(file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QTextStream out(&file);
+        out << input << "|user-agent=Mozilla/5.0 (X11; FreeBSD amd64; rv:77.0) Gecko/20100101 Firefox/77.0\n";
+        file.close();
+    }
+    else
+    {
+        qDebug() << "Failed to open file for writing:" << filePath;
+        return;
+    }
 
-    QProcess process;
+    // 2. Отправка JSON-RPC запроса для остановки плеера
+    QProcess::execute("curl", QStringList() << "-X" << "POST"
+                                            << "-H" << "Content-Type: application/json"
+                                            << "-d" << R"({"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1})"
+                                            << "http://192.168.8.45:8081/jsonrpc");
 
-    QStringList arguments;
+    QThread::sleep(3);
 
-    arguments << input;
+    // 3. Копирование файла на Raspberry Pi через scp
+    QProcess::execute("sshpass", QStringList() << "-p" << "639639"
+                                               << "scp" << filePath << "pi@192.168.8.45:/var/www/html");
 
-    QStringList anotherList = {input};
+    // 4. Включение/выключение аддона
+    QString JSON = R"({"jsonrpc":"2.0","method":"Addons.SetAddonEnabled","params":{"addonid":"pvr.iptvsimple","enabled":"toggle"},"id":1})";
+    QString URL = "http://192.168.8.45:8081/jsonrpc";
+    QProcess::execute("curl", QStringList() << "-s" << "-X" << "POST"
+                                            << "-H" << "Content-Type: application/json"
+                                            << "-d" << JSON
+                                            << URL);
 
-    QString program = "echoplaylist";
+    QThread::sleep(3);
 
-    process.setProgram(program);
+    // 5. Воспроизведение канала (пример с channelid = 1)
+    QString PLAY = R"({"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"channelid":1}}})";
+    QProcess::execute("curl", QStringList() << "-X" << "POST"
+                                            << "-H" << "Content-Type: application/json"
+                                            << "-d" << PLAY
+                                            << URL);
 
-    process.setArguments(anotherList);
-
-    process.start();
-
-    process.waitForFinished();
-
+    qDebug() << "Commands executed successfully";
 }
+
 
 
 void MainWindow::on_getonairnow_clicked()
