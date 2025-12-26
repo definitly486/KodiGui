@@ -855,28 +855,56 @@ void sendToggleAddon(QNetworkAccessManager* mgr, int id = 1)
 }
 
 // Функция повторного вызова с задержкой 3 секунды
-void MainWindow::reloadPvrIptvSimple(QNetworkAccessManager *mgr, int param)
+void MainWindow::reloadPvrIptvSimple(QNetworkAccessManager *mgr, int repeatCount)
 {
-    QNetworkRequest request(QUrl("http://192.168.8.45:8081/jsonrpc"));
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (repeatCount <= 0) return;
 
-    QByteArray postData = QString("{\"method\":\"reload\",\"param\":%1}").arg(param).toUtf8();
+    // создаем std::shared_ptr для рекурсивной функции
+    auto sendRequestRef = std::make_shared<std::function<void(int)>>();
 
-    QNetworkReply *reply = mgr->post(request, postData);
+    *sendRequestRef = [this, mgr, sendRequestRef](int remaining) {
+        // Формируем JSON-RPC 2.0 запрос
+        QJsonObject params;
+        params["addonid"] = "pvr.iptvsimple";
+        params["enabled"] = "toggle";
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        if (reply->error() != QNetworkReply::NoError) {
-            qDebug() << "Network error:" << reply->errorString();
-        } else {
-            QByteArray response = reply->readAll();
-            qDebug() << "Response received:" << response;
-        }
-        reply->deleteLater();
+        QJsonObject jsonRpcRequest;
+        jsonRpcRequest["jsonrpc"] = "2.0";
+        jsonRpcRequest["method"] = "Addons.SetAddonEnabled";
+        jsonRpcRequest["params"] = params;
+        jsonRpcRequest["id"] = 1;
 
-        // 🔹 Делаем задержку 3 секунды перед сигналом
-        QTimer::singleShot(3000, this, [this]() {
-            emit pvrReloaded(); // сигнал после 3 секунд
+        QJsonDocument doc(jsonRpcRequest);
+        QByteArray postData = doc.toJson(QJsonDocument::Compact);
+
+        QNetworkRequest request(QUrl("http://192.168.8.45:8081/jsonrpc"));
+        request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+        QNetworkReply *reply = mgr->post(request, postData);
+
+        connect(reply, &QNetworkReply::finished, this, [this, reply, remaining, sendRequestRef]() {
+            if (reply->error() != QNetworkReply::NoError) {
+                qDebug() << "Network error:" << reply->errorString();
+            } else {
+                QByteArray response = reply->readAll();
+                qDebug() << "Response received:" << response;
+            }
+            reply->deleteLater();
+
+            if (remaining > 1) {
+                QTimer::singleShot(500, this, [remaining, sendRequestRef]() {
+                    (*sendRequestRef)(remaining - 1);
+                });
+            } else {
+                QTimer::singleShot(3000, this, [this]() {
+                    emit pvrReloaded();
+                });
+            }
         });
-    });
+    };
+
+    // старт первого запроса
+    (*sendRequestRef)(repeatCount);
 }
+
 
