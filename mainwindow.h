@@ -3,12 +3,15 @@
 
 #include <QMainWindow>
 #include <QProcess>
+#include <QNetworkAccessManager>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
 }
 QT_END_NAMESPACE
+ 
+class TaskQueue; 
 
 class MainWindow : public QMainWindow
 {
@@ -68,5 +71,7 @@ private slots:
  private:
  Ui::MainWindow *ui;
 QProcess *pythonProcess;        // ← вот это
+ TaskQueue* queue;
+void reloadPvrIptvSimple(QNetworkAccessManager* mgr, int times = 2);
 };
 #endif // MAINWINDOW_H

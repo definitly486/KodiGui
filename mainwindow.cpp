@@ -18,7 +18,6 @@
 #include <QDebug>
 #include <QRegularExpression>
 #include <QMessageBox>
-
 #include <QFile>
 
 #include <QFile>
@@ -29,6 +28,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , pythonProcess(new QProcess(this))        // ← обязательно this!
+    , queue(new TaskQueue(this))
 {
     ui->setupUi(this);
 }
@@ -163,11 +163,13 @@ QString  MainWindow::on_lineEdit_textChanged()
 void MainWindow::on_pushButton_2_clicked()
 {
 
+
     QNetworkAccessManager *mgr = new QNetworkAccessManager();
     const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
+     reloadPvrIptvSimple(mgr, 2);
 
     QJsonObject obj;
     obj["jsonrpc"] = "2.0";
@@ -206,11 +208,12 @@ void MainWindow::on_pushButton_2_clicked()
 void MainWindow::on_pushButton_3_clicked()
 {
 
+
     QNetworkAccessManager *mgr = new QNetworkAccessManager();
     const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
+reloadPvrIptvSimple(mgr, 2);
 
     QJsonObject obj;
     obj["jsonrpc"] = "2.0";
@@ -708,6 +711,12 @@ QUrl url("https://matchtv.ru/on-air");
 void MainWindow::on_pushButton_16_clicked()
 {
 
+    QNetworkAccessManager *mgr = new QNetworkAccessManager();
+    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    reloadPvrIptvSimple(mgr, 2);
 
     QString input = ui->lineEdit_4->text();
 
@@ -803,4 +812,54 @@ void MainWindow::on_getonairnow_clicked()
     });
 
     pythonProcess->start(pythonCmd, QStringList() << scriptPath);
+}
+
+// Функция отправки JSON-RPC запроса для включения/отключения аддона
+void sendToggleAddon(QNetworkAccessManager* mgr, int id = 1)
+{
+    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
+
+    QJsonObject params;
+    params["addonid"] = "pvr.iptvsimple";
+    params["enabled"] = "toggle";
+
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["method"] = "Addons.SetAddonEnabled";
+    obj["params"] = params;
+    obj["id"] = id;
+
+    QByteArray data = QJsonDocument(obj).toJson();
+
+    // Логируем URL и тело запроса
+    qDebug() << "[sendToggleAddon] URL:" << url.toString();
+    qDebug() << "[sendToggleAddon] JSON-RPC данные:" << QJsonDocument(obj).toJson(QJsonDocument::Compact);
+
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    QNetworkReply* reply = mgr->post(request, data);
+
+    QObject::connect(reply, &QNetworkReply::finished, [reply, id]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QString contents = QString::fromUtf8(reply->readAll());
+            qDebug() << "[sendToggleAddon] Ответ от Kodi для вызова" << id << ":" << contents;
+        } else {
+            qDebug() << "[sendToggleAddon] Ошибка для вызова" << id << ":" << reply->errorString();
+        }
+        reply->deleteLater();
+    });
+}
+
+// Функция повторного вызова с задержкой 3 секунды
+void MainWindow::reloadPvrIptvSimple(QNetworkAccessManager* mgr, int times)
+{
+    qDebug() << "[reloadPvrIptvSimple] Запуск перезагрузки pvr.iptvsimple, повторов:" << times;
+
+    for (int i = 0; i < times; ++i) {
+        QTimer::singleShot(i * 3000, [ mgr, i, times]() {
+            qDebug() << "[reloadPvrIptvSimple] Выполняем вызов" << i+1 << "/" << times;
+            sendToggleAddon(mgr, i+1); // твоя функция для отправки JSON
+        });
+    }
 }
