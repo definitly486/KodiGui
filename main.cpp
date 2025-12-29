@@ -17,6 +17,7 @@ qputenv("QTWEBENGINE_DISABLE_GPU", "1");
 
     qputenv("QT_QPA_PLATFORM", "xcb");      // fallback с Wayland
     qputenv("QT_DISABLE_VULKAN", "1");      // на всякий случай
+    qputenv("QT_QUICK_BACKEND", "software"); 
 
     QApplication app(argc, argv); // переименовал переменную в app для ясности
     
