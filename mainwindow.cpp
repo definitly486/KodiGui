@@ -1174,5 +1174,96 @@ void MainWindow::on_getonairnow_clicked()
     pythonProcess->start(pythonCmd, QStringList() << scriptPath);
 }
 
+void MainWindow::on_playdrm_17_clicked()
+{
 
+    QNetworkAccessManager *mgr = new QNetworkAccessManager();
+    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["id"] = 1;
+    obj["method"] = "Player.Open";
+
+
+
+
+    QJsonObject params;
+    QJsonObject item;
+    item["file"] = "drm.mp4";
+
+    params["item"] = item;
+    obj["params"] = params;
+
+    QJsonDocument doc(obj);
+    QByteArray data = doc.toJson();
+
+    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"file":"drm.mp4"}}}'  http://192.168.8.45:8081/jsonrpc
+
+    QNetworkReply *reply = mgr->post(request, data);
+    QObject::connect(reply, &QNetworkReply::finished, [=](){
+
+        if(reply->error() == QNetworkReply::NoError){
+            QString contents = QString::fromUtf8(reply->readAll());
+            qDebug() << contents;
+
+        }
+
+        else{
+            QString err = reply->errorString();
+            qDebug() << err;
+        }
+
+        reply->deleteLater();
+
+    });
+
+
+}
+
+void MainWindow::on_stopdrm_18_clicked()
+{
+
+  QNetworkAccessManager *mgr = new QNetworkAccessManager();
+    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["method"] = "Player.Stop";
+
+    QJsonObject params;
+    params["playerid"] =1;
+    obj["params"] = params;
+    obj["id"] = "1";
+    
+    QJsonDocument doc(obj);
+    QByteArray data = doc.toJson();
+
+  //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1}'  http://192.168.8.45:8081/jsonrpc
+
+    QNetworkReply *reply = mgr->post(request, data);
+    QObject::connect(reply, &QNetworkReply::finished, [=](){
+
+        if(reply->error() == QNetworkReply::NoError){
+            QString contents = QString::fromUtf8(reply->readAll());
+            qDebug() << contents;
+
+        }
+
+        else{
+        QString err = reply->errorString();
+        qDebug() << err;
+         }
+
+       reply->deleteLater();
+
+    });
+
+}
 

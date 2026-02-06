@@ -29,7 +29,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>5</number>
+     <number>2</number>
     </property>
     <widget class="QWidget" name="volume">
      <attribute name="title">
@@ -61,7 +61,7 @@
        <number>50</number>
       </property>
       <property name="orientation">
-       <enum>Qt::Orientation::Horizontal</enum>
+       <enum>Qt::Horizontal</enum>
       </property>
      </widget>
     </widget>
@@ -235,6 +235,32 @@
       </property>
       <property name="text">
        <string>Close popup dialog</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="playdrm_17">
+      <property name="geometry">
+       <rect>
+        <x>330</x>
+        <y>100</y>
+        <width>101</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Play drm.mp4</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="stopdrm_18">
+      <property name="geometry">
+       <rect>
+        <x>450</x>
+        <y>100</y>
+        <width>101</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Stop drm.mp4</string>
       </property>
      </widget>
     </widget>
@@ -460,7 +486,7 @@
      <x>0</x>
      <y>0</y>
      <width>584</width>
-     <height>22</height>
+     <height>20</height>
     </rect>
    </property>
   </widget>

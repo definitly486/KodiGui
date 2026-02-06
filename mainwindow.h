@@ -67,6 +67,9 @@ private slots:
 
      void on_pushButton_16_clicked();
 
+     void on_playdrm_17_clicked();
+
+     void on_stopdrm_18_clicked();
 
  private:
  Ui::MainWindow *ui;
