@@ -3,6 +3,7 @@
 /Makefile
 /kodigui
 /.qtcreator/*
+/.qtc_clangd/*
 /m3u8interceptor.o
 /main.o
 /mainwindow.o

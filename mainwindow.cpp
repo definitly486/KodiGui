@@ -1267,3 +1267,52 @@ void MainWindow::on_stopdrm_18_clicked()
 
 }
 
+
+void MainWindow::on_pushButton_rundrm_clicked()
+{
+
+    QString sshPrefix = "ssh";
+    QString user = "pi@192.168.8.45";
+
+    // Последовательное выполнение команд с задержками
+    auto executeSequence = [&]() {
+
+
+        // 6. ./yt.sh $URL &
+        QString url = "your_video_url"; // замените на ваш URL
+        QString input = on_lineEdit_drm_textChanged();
+        QString keydrm = on_lineEdit_drm_key_textChanged();
+
+        runCommand(sshPrefix, {user, "$HOME/drm.sh " + input + " "  + keydrm + " "  "> /dev/null 2>&1 &"});
+        // 7. sleep 50
+        QTimer::singleShot(50000, []() {
+            qDebug() << "Прошло 50 секунд.";
+            // Можно добавить дальнейшие действия после ожидания
+            runYTmp4();
+
+        });
+
+
+
+    };
+
+    // Запуск последовательности
+    executeSequence();
+
+
+}
+
+
+QString MainWindow::on_lineEdit_drm_textChanged()
+{
+    QString input = ui->lineEdit_drm->text();
+    return input;
+}
+
+
+QString MainWindow::on_lineEdit_drm_key_textChanged()
+{
+    QString input = ui->lineEdit_drm_key->text();
+    return input;
+}
+

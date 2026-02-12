@@ -71,7 +71,17 @@ private slots:
 
      void on_stopdrm_18_clicked();
 
- private:
+     void on_pushButton_rundrm_clicked();
+
+      QString  on_lineEdit_drm_textChanged();
+
+       QString  on_lineEdit_drm_key_textChanged();
+
+
+
+
+
+  private:
  Ui::MainWindow *ui;
  QProcess *pythonProcess;        // ← вот это
    QNetworkAccessManager *manager;
