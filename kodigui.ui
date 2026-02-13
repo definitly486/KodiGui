@@ -480,7 +480,7 @@
     </widget>
     <widget class="QWidget" name="drm">
      <attribute name="title">
-      <string>Drm</string>
+      <string>DRM</string>
      </attribute>
      <widget class="QLineEdit" name="lineEdit_drm">
       <property name="geometry">
@@ -539,6 +539,19 @@
       </property>
       <property name="text">
        <string>run</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_killstreamlink">
+      <property name="geometry">
+       <rect>
+        <x>290</x>
+        <y>140</y>
+        <width>161</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Kill streamlink</string>
       </property>
      </widget>
     </widget>

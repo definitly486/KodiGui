@@ -1316,3 +1316,25 @@ QString MainWindow::on_lineEdit_drm_key_textChanged()
     return input;
 }
 
+
+void MainWindow::on_pushButton_killstreamlink_clicked()
+{
+    QString sshPrefix = "ssh";
+    QString user = "pi@192.168.8.45";
+
+    // Последовательное выполнение команд с задержками
+    auto executeSequence = [&]() {
+
+
+        // 3. killall -9 streamlink
+        runCommand(sshPrefix, {user, "killall -9 streamlink"});
+
+
+
+
+    };
+
+    // Запуск последовательности
+    executeSequence();
+}
+

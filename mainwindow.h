@@ -81,7 +81,9 @@ private slots:
 
 
 
-  private:
+       void on_pushButton_killstreamlink_clicked();
+
+   private:
  Ui::MainWindow *ui;
  QProcess *pythonProcess;        // ← вот это
    QNetworkAccessManager *manager;
