@@ -83,6 +83,8 @@ private slots:
 
        void on_pushButton_killstreamlink_clicked();
 
+       void on_pushButton_cleardrm_clicked();
+
    private:
  Ui::MainWindow *ui;
  QProcess *pythonProcess;        // ← вот это

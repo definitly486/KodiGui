@@ -61,7 +61,7 @@
        <number>50</number>
       </property>
       <property name="orientation">
-       <enum>Qt::Horizontal</enum>
+       <enum>Qt::Orientation::Horizontal</enum>
       </property>
      </widget>
     </widget>
@@ -544,7 +544,7 @@
      <widget class="QPushButton" name="pushButton_killstreamlink">
       <property name="geometry">
        <rect>
-        <x>290</x>
+        <x>170</x>
         <y>140</y>
         <width>161</width>
         <height>23</height>
@@ -552,6 +552,19 @@
       </property>
       <property name="text">
        <string>Kill streamlink</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_cleardrm">
+      <property name="geometry">
+       <rect>
+        <x>390</x>
+        <y>140</y>
+        <width>80</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>clear</string>
       </property>
      </widget>
     </widget>
@@ -563,7 +576,7 @@
      <x>0</x>
      <y>0</y>
      <width>584</width>
-     <height>20</height>
+     <height>19</height>
     </rect>
    </property>
   </widget>

@@ -1338,3 +1338,15 @@ void MainWindow::on_pushButton_killstreamlink_clicked()
     executeSequence();
 }
 
+
+void MainWindow::on_pushButton_cleardrm_clicked()
+{
+    ui->lineEdit_drm->clear();                    // вот твоя очистка URL
+    ui->lineEdit_drm->setPlaceholderText("Введите URL...");
+    ui->lineEdit_drm->setFocus();
+
+    ui->lineEdit_drm_key->clear();                    // вот твоя очистка URL
+    ui->lineEdit_drm_key->setPlaceholderText("Введите URL...");
+    ui->lineEdit_drm_key->setFocus();
+}
+
