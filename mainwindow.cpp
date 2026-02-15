@@ -1369,7 +1369,7 @@ void MainWindow::on_pushButton_playdrmts_clicked()
 
     QJsonObject params;
     QJsonObject item;
-    item["file"] = "yt.mp4";
+    item["file"] = "drm.ts";
 
     params["item"] = item;
     obj["params"] = params;
