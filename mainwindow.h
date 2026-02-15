@@ -87,6 +87,8 @@ private slots:
 
        void on_pushButton_playdrmts_clicked();
 
+       void on_pushButton_kill_m3u8DL_clicked();
+
    private:
  Ui::MainWindow *ui;
  QProcess *pythonProcess;        // ← вот это

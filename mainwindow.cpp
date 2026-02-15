@@ -1399,3 +1399,23 @@ void MainWindow::on_pushButton_playdrmts_clicked()
 
 }
 
+
+void MainWindow::on_pushButton_kill_m3u8DL_clicked()
+{
+    QString sshPrefix = "ssh";
+    QString user = "pi@192.168.8.45";
+
+    // Последовательное выполнение команд с задержками
+    auto executeSequence = [&]() {
+
+        // 3. killall -9 N_m3u8DL-RE
+        runCommand(sshPrefix, {user, "killall -9 N_m3u8DL-RE"});
+
+
+
+    };
+
+    // Запуск последовательности
+    executeSequence();
+}
+

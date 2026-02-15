@@ -23,7 +23,7 @@
     <property name="geometry">
      <rect>
       <x>-10</x>
-      <y>0</y>
+      <y>-10</y>
       <width>601</width>
       <height>461</height>
      </rect>
@@ -578,6 +578,19 @@
       </property>
       <property name="text">
        <string>Play drm.ts</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_kill_m3u8DL">
+      <property name="geometry">
+       <rect>
+        <x>299</x>
+        <y>180</y>
+        <width>161</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Kill N_m3u8DL-RE</string>
       </property>
      </widget>
     </widget>
