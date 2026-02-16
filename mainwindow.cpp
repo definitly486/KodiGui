@@ -1454,3 +1454,51 @@ void MainWindow::on_pushButton_17_clicked()
     });
 }
 
+
+void MainWindow::on_pushButton_playdrmaarts_clicked()
+{
+    QNetworkAccessManager *mgr = new QNetworkAccessManager();
+    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["id"] = 1;
+    obj["method"] = "Player.Open";
+
+
+
+
+    QJsonObject params;
+    QJsonObject item;
+    item["file"] = "drm.aar.ts";
+
+    params["item"] = item;
+    obj["params"] = params;
+
+    QJsonDocument doc(obj);
+    QByteArray data = doc.toJson();
+
+    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"file":"drm.arr.ts"}}}'  http://192.168.8.45:8081/jsonrpc
+
+    QNetworkReply *reply = mgr->post(request, data);
+    QObject::connect(reply, &QNetworkReply::finished, [=](){
+
+        if(reply->error() == QNetworkReply::NoError){
+            QString contents = QString::fromUtf8(reply->readAll());
+            qDebug() << contents;
+
+        }
+
+        else{
+            QString err = reply->errorString();
+            qDebug() << err;
+        }
+
+        reply->deleteLater();
+
+    });
+}
+
