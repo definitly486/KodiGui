@@ -1419,3 +1419,38 @@ void MainWindow::on_pushButton_kill_m3u8DL_clicked()
     executeSequence();
 }
 
+
+void MainWindow::on_pushButton_17_clicked()
+{
+    QNetworkAccessManager *mgr = new QNetworkAccessManager(this);
+
+    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
+
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["method"] = "Input.ExecuteAction";
+    QJsonObject paramsObj;
+    paramsObj["action"] = "back";
+    obj["params"] = paramsObj;
+    obj["id"] = 1;
+
+    QJsonDocument doc(obj);
+    QByteArray data = doc.toJson();
+
+    QNetworkReply *reply = mgr->post(request, data);
+
+    QObject::connect(reply, &QNetworkReply::finished, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QString contents = QString::fromUtf8(reply->readAll());
+            qDebug() << "Response:" << contents;
+        } else {
+            QString err = reply->errorString();
+            qDebug() << "Error:" << err;
+        }
+        reply->deleteLater();
+    });
+}
+
