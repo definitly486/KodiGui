@@ -1277,18 +1277,25 @@ void MainWindow::on_pushButton_rundrm_clicked()
     // Последовательное выполнение команд с задержками
     auto executeSequence = [&]() {
 
+         //3 
+         runCommand(sshPrefix, {user, "killall -9 N_m3u8DL-RE"});
+        //4 
+        runCommand(sshPrefix, {user, "rm -R $HOME/drm.ts"});
+        //5
 
-        // 6. ./yt.sh $URL &
-        QString url = "your_video_url"; // замените на ваш URL
+         runCommand(sshPrefix, {user, "rm -R $HOME/drm"});
+        
+        // 6. N_m3u8DL-RE
         QString input = on_lineEdit_drm_textChanged();
         QString keydrm = on_lineEdit_drm_key_textChanged();
 
-        runCommand(sshPrefix, {user, "$HOME/drm.sh " + input + " "  + keydrm + " "  "> /dev/null 2>&1 &"});
+        // N_m3u8DL-RE $1 -M format=mp4 --key  $2 -sv worst    --save-name "drm" --save-dir  $HOME  --live-pipe-mux   --select-audio id="audio_aar=128000"
+        runCommand(sshPrefix, {user, "N_m3u8DL-RE "+input+" -M format=mp4 --key  "+keydrm+" -sv worst    --save-name drm --save-dir  $HOME  --live-pipe-mux   --select-audio id='audio_aar=128000' " " > /dev/null 2>&1 &"});
         // 7. sleep 50
         QTimer::singleShot(50000, []() {
             qDebug() << "Прошло 50 секунд.";
             // Можно добавить дальнейшие действия после ожидания
-            runYTmp4();
+
 
         });
 
