@@ -1346,7 +1346,7 @@ void MainWindow::on_pushButton_cleardrm_clicked()
     ui->lineEdit_drm->setFocus();
 
     ui->lineEdit_drm_key->clear();                    // вот твоя очистка URL
-    ui->lineEdit_drm_key->setPlaceholderText("Введите URL...");
+    ui->lineEdit_drm_key->setPlaceholderText("Введите key...");
     ui->lineEdit_drm_key->setFocus();
 }
 
