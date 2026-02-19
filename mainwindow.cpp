@@ -1509,3 +1509,32 @@ void MainWindow::on_pushButton_playdrmaarts_clicked()
     });
 }
 
+
+void MainWindow::on_pushButton_18_clicked()
+{
+    QProcess *process = new QProcess(this);
+
+    connect(process, &QProcess::readyReadStandardOutput, this, [=]()
+            {
+                QByteArray data = process->readAllStandardOutput();
+                ui->textEdit->append(QString::fromUtf8(data));
+            });
+
+    connect(process, &QProcess::readyReadStandardError, this, [=]()
+            {
+                QByteArray data = process->readAllStandardError();
+                ui->textEdit->append(QString::fromUtf8(data));
+            });
+
+    QString program = "sshpass";
+    QStringList arguments;
+
+    arguments << "-p" << "639639"
+              << "ssh"
+              << "pi@192.168.8.45"
+              << "top -b -n 1";
+    ui->textEdit->clear();
+    process->start(program, arguments);
+}
+
+
