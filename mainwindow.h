@@ -28,6 +28,8 @@ private slots:
 
     QString on_lineEdit_textChanged();
 
+    void on_pushButton_info_clicked();
+
     void on_pushButton_clicked();
 
     void on_pushButton_2_clicked();

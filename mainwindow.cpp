@@ -195,6 +195,40 @@ void MainWindow::on_pushButton_clicked()
 
 }
 
+void MainWindow::on_pushButton_info_clicked()
+{
+    // Получаем текст из lineEdit
+    QString input = ui->lineEdit->text();
+
+    qDebug() << input;
+
+    QProcess process;
+
+    // Формируем аргументы для streamlink
+    QStringList arguments;
+    arguments << input;
+
+    // Указываем программу
+    process.setProgram("streamlink");
+    process.setArguments(arguments);
+
+    // Запуск процесса
+    process.start();
+
+    if (!process.waitForFinished()) {
+        ui->textEdit_info->setText("Ошибка выполнения процесса");
+        return;
+    }
+
+    // Чтение вывода (stdout)
+    QString output = process.readAllStandardOutput();
+
+    // Если нужно — читаем ошибки
+    QString errorOutput = process.readAllStandardError();
+
+    // Выводим в textEdit
+    ui->textEdit_info->setText(output + "\n" + errorOutput);
+}
 
 QString  MainWindow::on_lineEdit_textChanged()
 
