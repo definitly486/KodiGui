@@ -11,27 +11,23 @@
 #include "playerwindow.h"
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
-#include <QNetworkReply>
 #include <QUrl>
-#include <QDebug>
 #include <QRegularExpression>
 #include <QMessageBox>
 #include <QFile>
-#include <QFile>
 #include <QTextStream>
-#include <QJsonObject>
 #include <QTimer>
-#include <QJsonArray>
+#include <QLineEdit>
 #include <functional>
 #include <QtConcurrent>
 #include <QFuture>
 #include <QPointer>
-#include <QFile>
-#include <QTextStream>
-#include <QDebug>
-#include <QTimer>
 #include <libssh2.h>
 #include <libssh2_sftp.h>
+
+// Выполняет внешнюю команду (используется для "ssh pi@... <cmd>").
+// Определена ниже в файле; объявлена здесь, т.к. используется раньше.
+void runCommand(const QString &command, const QStringList &args = {});
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -59,80 +55,10 @@ if (pythonProcess->state() != QProcess::NotRunning) {
 }
 
 
-void postkodi(int value) {
-
-
-
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-
-    QNetworkRequest request(url);
-
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-
-    obj["jsonrpc"] = "2.0";
-
-    obj["id"] = "1";
-
-    obj["method"] = "Application.SetVolume";
-
-    obj["params"] = QJsonObject({{"volume", value}});
-
-    QJsonDocument doc(obj);
-
-    QByteArray data = doc.toJson();
-
-    // or
-
-    // QByteArray data("{\"key1\":\"value1\",\"key2\":\"value2\"}");
-
-    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Application.SetVolume","params":{"volume":80}}' http://192.168.8.45:8081/jsonrpc
-
-    //QByteArray data("{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"Application.SetVolume\",\"params\":\{\"volume\":  50}}");
-
-    QNetworkReply *reply = mgr->post(request, data);
-
-
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-
-            QString contents = QString::fromUtf8(reply->readAll());
-
-            qDebug() << contents;
-
-        }
-
-        else{
-
-            QString err = reply->errorString();
-
-            qDebug() << err;
-
-        }
-
-        reply->deleteLater();
-
-    });
-
-
-
-}
-
-
 void MainWindow::on_horizontalSlider_valueChanged(int value)
-
 {
-
-    postkodi(value);
-
+    postSetVolume(value);
     qDebug() << "Значение горизонтального слайдера изменилось:" << value;
-
-
 }
 
 void MainWindow::sendJsonRpc(
@@ -165,6 +91,164 @@ void MainWindow::sendJsonRpc(
 
         reply->deleteLater();
     });
+}
+
+// ---------------------------------------------------------------------
+// Общие хелперы для Kodi JSON-RPC.
+// Раньше каждый обработчик кнопки сам создавал QNetworkAccessManager,
+// собирал QJsonObject и слушал QNetworkReply::finished — один и тот же
+// код повторялся более десятка раз. Теперь все они сводятся к sendJsonRpc().
+// ---------------------------------------------------------------------
+
+void MainWindow::postPlayerOpenFile(const QString &file)
+{
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["id"] = rpcId++;
+    obj["method"] = "Player.Open";
+    obj["params"] = QJsonObject{{"item", QJsonObject{{"file", file}}}};
+
+    sendJsonRpc(obj, "Player.Open file=" + file);
+}
+
+void MainWindow::postPlayerOpenChannel(int channelId)
+{
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["id"] = rpcId++;
+    obj["method"] = "Player.Open";
+    obj["params"] = QJsonObject{{"item", QJsonObject{{"channelid", channelId}}}};
+
+    sendJsonRpc(obj, QString("Player.Open channelid=%1").arg(channelId));
+}
+
+void MainWindow::postPlayerStop()
+{
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["id"] = rpcId++;
+    obj["method"] = "Player.Stop";
+    obj["params"] = QJsonObject{{"playerid", 1}};
+
+    sendJsonRpc(obj, "Player.Stop");
+}
+
+void MainWindow::postSetVolume(int volume)
+{
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["id"] = rpcId++;
+    obj["method"] = "Application.SetVolume";
+    obj["params"] = QJsonObject{{"volume", volume}};
+
+    sendJsonRpc(obj, QString("Application.SetVolume=%1").arg(volume));
+}
+
+void MainWindow::postInputAction(const QString &action)
+{
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["id"] = rpcId++;
+    obj["method"] = "Input.ExecuteAction";
+    obj["params"] = QJsonObject{{"action", action}};
+
+    sendJsonRpc(obj, "Input.ExecuteAction action=" + action);
+}
+
+void MainWindow::postSetAddonEnabled(const QString &addonId, const QJsonValue &enabledValue)
+{
+    QJsonObject obj;
+    obj["jsonrpc"] = "2.0";
+    obj["id"] = rpcId++;
+    obj["method"] = "Addons.SetAddonEnabled";
+    obj["params"] = QJsonObject{{"addonid", addonId}, {"enabled", enabledValue}};
+
+    sendJsonRpc(obj, "Addons.SetAddonEnabled " + addonId);
+}
+
+// ---------------------------------------------------------------------
+// Общий хелпер для SSH-команд "убить процесс на Pi". Раньше на каждую
+// такую кнопку заводился отдельный обработчик с лямбдой executeSequence,
+// внутри которой был один-единственный вызов runCommand.
+// ---------------------------------------------------------------------
+void MainWindow::sshKillProcess(const QString &processName)
+{
+    runCommand("ssh", {"pi@192.168.8.45", "killall -9 " + processName});
+}
+
+// ---------------------------------------------------------------------
+// Общий хелпер очистки текстового поля с плейсхолдером.
+// ---------------------------------------------------------------------
+void MainWindow::clearLineEditField(QLineEdit *edit, const QString &placeholder)
+{
+    edit->clear();
+    edit->setPlaceholderText(placeholder);
+    edit->setFocus();
+}
+
+// ---------------------------------------------------------------------
+// Синхронно заливает локальный файл на Pi по SFTP через сырой TCP-сокет
+// и libssh2. Раньше этот ~70-строчный блок был продублирован дословно
+// в двух обработчиках (on_pushButton_7_clicked и on_pushButton_16_clicked).
+// Предназначена для вызова из фонового потока (QtConcurrent::run), как и раньше.
+// ---------------------------------------------------------------------
+bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
+{
+    const QString host = "192.168.8.45";
+    const int port = 22;
+    const QString user = "pi";
+    const QString password = "639639";
+
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) { qDebug() << "Socket error"; return false; }
+
+    struct sockaddr_in sin{};
+    sin.sin_family = AF_INET;
+    sin.sin_port = htons(port);
+    struct hostent* he = gethostbyname(host.toUtf8().constData());
+    if (!he) { ::close(sock); return false; }
+    sin.sin_addr = *(struct in_addr*)he->h_addr;
+
+    if (::connect(sock, (struct sockaddr*)&sin, sizeof(sin)) != 0) { ::close(sock); return false; }
+
+    LIBSSH2_SESSION* session = libssh2_session_init();
+    if (!session) { ::close(sock); return false; }
+    if (libssh2_session_handshake(session, sock)) { libssh2_session_free(session); ::close(sock); return false; }
+    if (libssh2_userauth_password(session, user.toUtf8().constData(), password.toUtf8().constData())) {
+        libssh2_session_disconnect(session, "Bye");
+        libssh2_session_free(session);
+        ::close(sock);
+        return false;
+    }
+
+    LIBSSH2_SFTP* sftp = libssh2_sftp_init(session);
+    if (!sftp) { libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return false; }
+
+    LIBSSH2_SFTP_HANDLE* sftpHandle = libssh2_sftp_open(sftp,
+        remoteFile.toUtf8().constData(),
+        LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
+        LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR |
+        LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
+
+    if (!sftpHandle) { libssh2_sftp_shutdown(sftp); libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return false; }
+
+    bool ok = false;
+    QFile file(localPath);
+    if (file.open(QIODevice::ReadOnly)) {
+        QByteArray data = file.readAll();
+        libssh2_sftp_write(sftpHandle, data.constData(), data.size());
+        ok = true;
+    }
+
+    libssh2_sftp_close(sftpHandle);
+    libssh2_sftp_shutdown(sftp);
+    libssh2_session_disconnect(session, "Bye");
+    libssh2_session_free(session);
+    ::close(sock);
+
+    if (ok)
+        qDebug() << "File uploaded successfully:" << remoteFile;
+    return ok;
 }
 
 void MainWindow::on_pushButton_clicked()
@@ -239,88 +323,13 @@ QString  MainWindow::on_lineEdit_textChanged()
 
 void MainWindow::on_pushButton_2_clicked()
 {
-
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["id"] = "1";
-    obj["method"] = "Player.Open";
-
-    QJsonObject params;
-    params["item"] = QJsonObject({{"channelid", 1}});
-    obj["params"] = params;
-    
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"channelid":1}}}' http://192.168.8.45:8081/jsonrpc
-
-    QNetworkReply *reply = mgr->post(request, data);
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << contents;
-
-        }
-
-        else{
-        QString err = reply->errorString();
-        qDebug() << err;
-         }
-
-       reply->deleteLater();
-
-    });
+    postPlayerOpenChannel(1);
 }
 
 
 void MainWindow::on_pushButton_3_clicked()
 {
-
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["method"] = "Player.Stop";
-
-    QJsonObject params;
-    params["playerid"] =1;
-    obj["params"] = params;
-    obj["id"] = "1";
-    
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-  //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1}'  http://192.168.8.45:8081/jsonrpc
-
-    QNetworkReply *reply = mgr->post(request, data);
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << contents;
-
-        }
-
-        else{
-        QString err = reply->errorString();
-        qDebug() << err;
-         }
-
-       reply->deleteLater();
-
-    });
-
+    postPlayerStop();
 }
 
 
@@ -410,60 +419,8 @@ void MainWindow::on_pushButton_7_clicked()
 
         // 3️⃣ Асинхронный SFTP upload
         QtConcurrent::run([safeThis, filePath]() {
-            const QString host = "192.168.8.45";
-            const int port = 22;
-            const QString user = "pi";
-            const QString password = "639639";
-            const QString remoteFile = "/var/www/html/list.m3u";
-
-            // TCP socket
-            int sock = socket(AF_INET, SOCK_STREAM, 0);
-            if (sock < 0) { qDebug() << "Socket error"; return; }
-
-            struct sockaddr_in sin{};
-            sin.sin_family = AF_INET;
-            sin.sin_port = htons(port);
-            struct hostent* he = gethostbyname(host.toUtf8().constData());
-            if (!he) { ::close(sock); return; }
-            sin.sin_addr = *(struct in_addr*)he->h_addr;
-
-            if (::connect(sock, (struct sockaddr*)&sin, sizeof(sin)) != 0) { ::close(sock); return; }
-
-            // libssh2 session
-            LIBSSH2_SESSION* session = libssh2_session_init();
-            if (!session) { ::close(sock); return; }
-            if (libssh2_session_handshake(session, sock)) { libssh2_session_free(session); ::close(sock); return; }
-            if (libssh2_userauth_password(session, user.toUtf8().constData(), password.toUtf8().constData())) {
-                libssh2_session_disconnect(session, "Bye");
-                libssh2_session_free(session);
-                ::close(sock);
+            if (!uploadFileViaSftp(filePath, "/var/www/html/list.m3u"))
                 return;
-            }
-
-            // SFTP
-            LIBSSH2_SFTP* sftp = libssh2_sftp_init(session);
-            if (!sftp) { libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return; }
-
-            LIBSSH2_SFTP_HANDLE* sftpHandle = libssh2_sftp_open(sftp,
-                remoteFile.toUtf8().constData(),
-                LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
-                LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR |
-                LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
-
-            if (!sftpHandle) { libssh2_sftp_shutdown(sftp); libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return; }
-
-            QFile file(filePath);
-            if (!file.open(QIODevice::ReadOnly)) { libssh2_sftp_close(sftpHandle); libssh2_sftp_shutdown(sftp); libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return; }
-            QByteArray data = file.readAll();
-            libssh2_sftp_write(sftpHandle, data.constData(), data.size());
-
-            libssh2_sftp_close(sftpHandle);
-            libssh2_sftp_shutdown(sftp);
-            libssh2_session_disconnect(session, "Bye");
-            libssh2_session_free(session);
-            ::close(sock);
-
-            qDebug() << "File uploaded successfully:" << remoteFile;
 
             // 4️⃣ JSON-RPC в основном потоке
             if (!safeThis) return;
@@ -550,113 +507,17 @@ void MainWindow::on_pushButton_7_clicked()
 
 void MainWindow::on_pushButton_9_clicked()
 {
-
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["id"] = 1;
-    obj["method"] = "Player.Open";
-
-
-
-
-    QJsonObject params;
-    QJsonObject item;
-    item["file"] = "yt.mp4";
-
-    params["item"] = item;
-    obj["params"] = params;
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"file":"yt.mp4"}}}'  http://192.168.8.45:8081/jsonrpc
-
-    QNetworkReply *reply = mgr->post(request, data);
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << contents;
-
-        }
-
-        else{
-            QString err = reply->errorString();
-            qDebug() << err;
-        }
-
-        reply->deleteLater();
-
-    });
-
-
+    postPlayerOpenFile("yt.mp4");
 }
 
 
-void runCommand(const QString &command, const QStringList &args = {}) {
+void runCommand(const QString &command, const QStringList &args) {
     QProcess process;
     process.start(command, args);
     process.waitForFinished(-1);
     qDebug() << "Команда:" << command << args;
     qDebug() << "Вывод:" << process.readAllStandardOutput();
     qDebug() << "Ошибки:" << process.readAllStandardError();
-}
-
-
-void runYTmp4(){
-
-
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["id"] = 1;
-    obj["method"] = "Player.Open";
-
-
-
-
-    QJsonObject params;
-    QJsonObject item;
-    item["file"] = "yt.mp4";
-
-    params["item"] = item;
-    obj["params"] = params;
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"file":"yt.mp4"}}}'  http://192.168.8.45:8081/jsonrpc
-
-    QNetworkReply *reply = mgr->post(request, data);
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << contents;
-
-        }
-
-        else{
-            QString err = reply->errorString();
-            qDebug() << err;
-        }
-
-        reply->deleteLater();
-
-    });
-
-
 }
 
 
@@ -687,11 +548,9 @@ void MainWindow::on_pushButton_8_clicked()
         QString input = on_lineEdit_3_textChanged();
        runCommand(sshPrefix, {user, "$HOME/.local/bin/yt-dlp  -f 91 " + input + " --no-part   -o yt.mp4 " " > /dev/null 2>&1 &"});
         // 7. sleep 50
-        QTimer::singleShot(50000, []() {
+        QTimer::singleShot(50000, this, [this]() {
             qDebug() << "Прошло 50 секунд.";
-            // Можно добавить дальнейшие действия после ожидания
-             runYTmp4();
-
+            postPlayerOpenFile("yt.mp4");
         });
 
 
@@ -713,184 +572,38 @@ QString MainWindow::on_lineEdit_3_textChanged()
 
 void MainWindow::on_pushButton_10_clicked()
 {
-
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["method"] = "Player.Stop";
-
-    QJsonObject params;
-    params["playerid"] =1;
-    obj["params"] = params;
-    obj["id"] = "1";
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1}'  http://192.168.8.45:8081/jsonrpc
-
-    QNetworkReply *reply = mgr->post(request, data);
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << contents;
-
-        }
-
-        else{
-            QString err = reply->errorString();
-            qDebug() << err;
-        }
-
-        reply->deleteLater();
-
-    });
-
+    postPlayerStop();
 }
 
 
 void MainWindow::on_pushButton_11_clicked()
 {
-
-    QString sshPrefix = "ssh";
-    QString user = "pi@192.168.8.45";
-
-    // Последовательное выполнение команд с задержками
-    auto executeSequence = [&]() {
-
-        // 3. killall -9 yt-dlp
-        runCommand(sshPrefix, {user, "killall -9 yt-dlp"});
-
-
-
-    };
-
-    // Запуск последовательности
-    executeSequence();
-
+    sshKillProcess("yt-dlp");
 }
 
 
 void MainWindow::on_pushButton_12_clicked()
 {
-    QString sshPrefix = "ssh";
-    QString user = "pi@192.168.8.45";
-
-    // Последовательное выполнение команд с задержками
-    auto executeSequence = [&]() {
-
-        // 3. killall -9 yt-dlp
-        runCommand(sshPrefix, {user, "killall -9 ffmpeg"});
-
-
-
-    };
-
-    // Запуск последовательности
-    executeSequence();
-
+    sshKillProcess("ffmpeg");
 }
 
 
 void MainWindow::on_pushButton_13_clicked()
 {
-
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-
-    // Define the URL
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-
-    // Setup the request
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-    // Build the JSON object for toggling the addon
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["id"] = 1;
-    obj["method"] = "Addons.SetAddonEnabled";
-
-    QJsonObject params;
-    params["addonid"] = "pvr.iptvsimple";
-    params["enabled"] = "toggle"; // or true/false as per API requirements
-
-    obj["params"] = params;
-
-    //JSON='{"jsonrpc":"2.0","method":"Addons.SetAddonEnabled","params":{"addonid":"pvr.iptvsimple","enabled":"toggle"},"id":1}'
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    // Send POST request
-    QNetworkReply *reply = mgr->post(request, data);
-
-    // Handle reply
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << "Response:" << contents;
-        }
-        else{
-            QString err = reply->errorString();
-            qDebug() << "Error:" << err;
-        }
-        reply->deleteLater();
-    });
-
-
+    postSetAddonEnabled("pvr.iptvsimple", QJsonValue("toggle"));
 }
 
 
 void MainWindow::on_pushButton_14_clicked()
 {
-    QNetworkAccessManager *mgr = new QNetworkAccessManager(this);
-
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["method"] = "Input.ExecuteAction";
-    QJsonObject paramsObj;
-    paramsObj["action"] = "back";
-    obj["params"] = paramsObj;
-    obj["id"] = 1;
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    QNetworkReply *reply = mgr->post(request, data);
-
-    QObject::connect(reply, &QNetworkReply::finished, [=]() {
-        if (reply->error() == QNetworkReply::NoError) {
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << "Response:" << contents;
-        } else {
-            QString err = reply->errorString();
-            qDebug() << "Error:" << err;
-        }
-        reply->deleteLater();
-    });
+    postInputAction("back");
 }
 
 
 void MainWindow::on_pushButton_clearurl_clicked()
 {
-    ui->lineEdit_2->clear();                    // вот твоя очистка URL
-    ui->lineEdit_2->setPlaceholderText("Введите URL...");
-    ui->lineEdit_2->setFocus();
-
-    ui->lineEdit->clear();                    // вот твоя очистка URL
-    ui->lineEdit->setPlaceholderText("Введите URL...");
-    ui->lineEdit->setFocus();
+    clearLineEditField(ui->lineEdit_2, "Введите URL...");
+    clearLineEditField(ui->lineEdit, "Введите URL...");
 }
 
 
@@ -948,87 +661,8 @@ void MainWindow::on_pushButton_16_clicked()
 
                     // 3️⃣ Асинхронный SFTP upload
                     QtConcurrent::run([safeThis, filePath]() {
-
-                        const QString host = "192.168.8.45";
-                        const int port = 22;
-                        const QString user = "pi";
-                        const QString password = "639639";
-                        const QString remoteFile = "/var/www/html/list.m3u";
-
-                        int sock = socket(AF_INET, SOCK_STREAM, 0);
-                        if (sock < 0) return;
-
-                        struct sockaddr_in sin{};
-                        sin.sin_family = AF_INET;
-                        sin.sin_port   = htons(port);
-
-                        struct hostent* he = gethostbyname(host.toUtf8().constData());
-                        if (!he) { ::close(sock); return; }
-
-                        sin.sin_addr = *(struct in_addr*)he->h_addr;
-
-                        if (::connect(sock, (struct sockaddr*)&sin, sizeof(sin)) != 0) {
-                            ::close(sock);
+                        if (!uploadFileViaSftp(filePath, "/var/www/html/list.m3u"))
                             return;
-                        }
-
-                        LIBSSH2_SESSION* session = libssh2_session_init();
-                        if (!session) { ::close(sock); return; }
-
-                        if (libssh2_session_handshake(session, sock)) {
-                            libssh2_session_free(session);
-                            ::close(sock);
-                            return;
-                        }
-
-                        if (libssh2_userauth_password(
-                                session,
-                                user.toUtf8().constData(),
-                                password.toUtf8().constData())) {
-
-                            libssh2_session_disconnect(session, "Bye");
-                            libssh2_session_free(session);
-                            ::close(sock);
-                            return;
-                        }
-
-                        LIBSSH2_SFTP* sftp = libssh2_sftp_init(session);
-                        if (!sftp) {
-                            libssh2_session_disconnect(session, "Bye");
-                            libssh2_session_free(session);
-                            ::close(sock);
-                            return;
-                        }
-
-                        LIBSSH2_SFTP_HANDLE* handle =
-                            libssh2_sftp_open(
-                                sftp,
-                                remoteFile.toUtf8().constData(),
-                                LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
-                                LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR |
-                                    LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
-
-                        if (!handle) {
-                            libssh2_sftp_shutdown(sftp);
-                            libssh2_session_disconnect(session, "Bye");
-                            libssh2_session_free(session);
-                            ::close(sock);
-                            return;
-                        }
-
-                        QFile file(filePath);
-                        if (file.open(QIODevice::ReadOnly)) {
-                            QByteArray data = file.readAll();
-                            libssh2_sftp_write(handle, data.constData(), data.size());
-                        }
-
-                        libssh2_sftp_close(handle);
-                        libssh2_sftp_shutdown(sftp);
-                        libssh2_session_disconnect(session, "Bye");
-                        libssh2_session_free(session);
-                        ::close(sock);
-
-                        qDebug() << "File uploaded successfully:" << remoteFile;
 
                         // 4️⃣ Возврат в GUI-поток
                         if (!safeThis) return;
@@ -1210,95 +844,12 @@ void MainWindow::on_getonairnow_clicked()
 
 void MainWindow::on_playdrm_17_clicked()
 {
-
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["id"] = 1;
-    obj["method"] = "Player.Open";
-
-
-
-
-    QJsonObject params;
-    QJsonObject item;
-    item["file"] = "drm.mp4";
-
-    params["item"] = item;
-    obj["params"] = params;
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"file":"drm.mp4"}}}'  http://192.168.8.45:8081/jsonrpc
-
-    QNetworkReply *reply = mgr->post(request, data);
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << contents;
-
-        }
-
-        else{
-            QString err = reply->errorString();
-            qDebug() << err;
-        }
-
-        reply->deleteLater();
-
-    });
-
-
+    postPlayerOpenFile("drm.mp4");
 }
 
 void MainWindow::on_stopdrm_18_clicked()
 {
-
-  QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["method"] = "Player.Stop";
-
-    QJsonObject params;
-    params["playerid"] =1;
-    obj["params"] = params;
-    obj["id"] = "1";
-    
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-  //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc": "2.0", "method": "Player.Stop", "params": { "playerid": 1 }, "id": 1}'  http://192.168.8.45:8081/jsonrpc
-
-    QNetworkReply *reply = mgr->post(request, data);
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << contents;
-
-        }
-
-        else{
-        QString err = reply->errorString();
-        qDebug() << err;
-         }
-
-       reply->deleteLater();
-
-    });
-
+    postPlayerStop();
 }
 
 
@@ -1312,7 +863,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
     auto executeSequence = [&]() {
 
          //3 
-         runCommand(sshPrefix, {user, "killall -9 N_m3u8DL-RE"});
+         sshKillProcess("N_m3u8DL-RE");
         //4 
         runCommand(sshPrefix, {user, "rm -R $HOME/drm.ts"});
         //5
@@ -1360,187 +911,38 @@ QString MainWindow::on_lineEdit_drm_key_textChanged()
 
 void MainWindow::on_pushButton_killstreamlink_clicked()
 {
-    QString sshPrefix = "ssh";
-    QString user = "pi@192.168.8.45";
-
-    // Последовательное выполнение команд с задержками
-    auto executeSequence = [&]() {
-
-
-        // 3. killall -9 streamlink
-        runCommand(sshPrefix, {user, "killall -9 streamlink"});
-
-
-
-
-    };
-
-    // Запуск последовательности
-    executeSequence();
+    sshKillProcess("streamlink");
 }
 
 
 void MainWindow::on_pushButton_cleardrm_clicked()
 {
-    ui->lineEdit_drm->clear();                    // вот твоя очистка URL
-    ui->lineEdit_drm->setPlaceholderText("Введите URL...");
-    ui->lineEdit_drm->setFocus();
-
-    ui->lineEdit_drm_key->clear();                    // вот твоя очистка URL
-    ui->lineEdit_drm_key->setPlaceholderText("Введите key...");
-    ui->lineEdit_drm_key->setFocus();
+    clearLineEditField(ui->lineEdit_drm, "Введите URL...");
+    clearLineEditField(ui->lineEdit_drm_key, "Введите key...");
 }
 
 
 void MainWindow::on_pushButton_playdrmts_clicked()
 {
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["id"] = 1;
-    obj["method"] = "Player.Open";
-
-
-
-
-    QJsonObject params;
-    QJsonObject item;
-    item["file"] = "drm.ts";
-
-    params["item"] = item;
-    obj["params"] = params;
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"file":"drm.ts"}}}'  http://192.168.8.45:8081/jsonrpc
-
-    QNetworkReply *reply = mgr->post(request, data);
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << contents;
-
-        }
-
-        else{
-            QString err = reply->errorString();
-            qDebug() << err;
-        }
-
-        reply->deleteLater();
-
-    });
-
+    postPlayerOpenFile("drm.ts");
 }
 
 
 void MainWindow::on_pushButton_kill_m3u8DL_clicked()
 {
-    QString sshPrefix = "ssh";
-    QString user = "pi@192.168.8.45";
-
-    // Последовательное выполнение команд с задержками
-    auto executeSequence = [&]() {
-
-        // 3. killall -9 N_m3u8DL-RE
-        runCommand(sshPrefix, {user, "killall -9 N_m3u8DL-RE"});
-
-
-
-    };
-
-    // Запуск последовательности
-    executeSequence();
+    sshKillProcess("N_m3u8DL-RE");
 }
 
 
 void MainWindow::on_pushButton_17_clicked()
 {
-    QNetworkAccessManager *mgr = new QNetworkAccessManager(this);
-
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["method"] = "Input.ExecuteAction";
-    QJsonObject paramsObj;
-    paramsObj["action"] = "back";
-    obj["params"] = paramsObj;
-    obj["id"] = 1;
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    QNetworkReply *reply = mgr->post(request, data);
-
-    QObject::connect(reply, &QNetworkReply::finished, [=]() {
-        if (reply->error() == QNetworkReply::NoError) {
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << "Response:" << contents;
-        } else {
-            QString err = reply->errorString();
-            qDebug() << "Error:" << err;
-        }
-        reply->deleteLater();
-    });
+    postInputAction("back");
 }
 
 
 void MainWindow::on_pushButton_playdrmaarts_clicked()
 {
-    QNetworkAccessManager *mgr = new QNetworkAccessManager();
-    const QUrl url(QStringLiteral("http://192.168.8.45:8081/jsonrpc"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["id"] = 1;
-    obj["method"] = "Player.Open";
-
-
-
-
-    QJsonObject params;
-    QJsonObject item;
-    item["file"] = "drm.aar.ts";
-
-    params["item"] = item;
-    obj["params"] = params;
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson();
-
-    //curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"Player.Open","params":{"item":{"file":"drm.arr.ts"}}}'  http://192.168.8.45:8081/jsonrpc
-
-    QNetworkReply *reply = mgr->post(request, data);
-    QObject::connect(reply, &QNetworkReply::finished, [=](){
-
-        if(reply->error() == QNetworkReply::NoError){
-            QString contents = QString::fromUtf8(reply->readAll());
-            qDebug() << contents;
-
-        }
-
-        else{
-            QString err = reply->errorString();
-            qDebug() << err;
-        }
-
-        reply->deleteLater();
-
-    });
+    postPlayerOpenFile("drm.aar.ts");
 }
 
 

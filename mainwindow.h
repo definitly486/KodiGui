@@ -7,6 +7,8 @@
 #include <QNetworkAccessManager>  // <-- обязательно для QNetworkAccessManager
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QJsonObject>
+#include <QJsonValue>
 
 
 QT_BEGIN_NAMESPACE
@@ -108,5 +110,19 @@ private slots:
         const QString &desc,
         std::function<void(const QJsonObject&)> onSuccess = nullptr
     );
+
+    // --- Общие хелперы для Kodi JSON-RPC (убирают дублирование boilerplate'а) ---
+    void postPlayerOpenFile(const QString &file);
+    void postPlayerOpenChannel(int channelId);
+    void postPlayerStop();
+    void postSetVolume(int volume);
+    void postInputAction(const QString &action);
+    void postSetAddonEnabled(const QString &addonId, const QJsonValue &enabledValue);
+
+    // --- Общий хелпер для SSH-команд (killall на Raspberry Pi) ---
+    void sshKillProcess(const QString &processName);
+
+    // --- Общий хелпер для очистки полей ввода ---
+    void clearLineEditField(class QLineEdit *edit, const QString &placeholder);
 };
 #endif // MAINWINDOW_H
