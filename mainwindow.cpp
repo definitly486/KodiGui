@@ -24,15 +24,30 @@
 #include <QPointer>
 #include <libssh2.h>
 #include <libssh2_sftp.h>
+#include <QStandardPaths>
+#include <QDir>
+
+// Windows/Unix compatibility
+#ifdef Q_OS_WIN
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
+    typedef int socklen_t;
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <netdb.h>
+    #include <unistd.h>
+    #define closesocket close
+    #define INVALID_SOCKET -1
+    #define SOCKET_ERROR -1
+    typedef int SOCKET;
+#endif
 
 // Выполняет внешнюю команду (используется для "ssh pi@... <cmd>").
 // Определена ниже в файле; объявлена здесь, т.к. используется раньше.
 void runCommand(const QString &command, const QStringList &args = {});
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <unistd.h>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -170,10 +185,16 @@ void MainWindow::postSetAddonEnabled(const QString &addonId, const QJsonValue &e
 // Общий хелпер для SSH-команд "убить процесс на Pi". Раньше на каждую
 // такую кнопку заводился отдельный обработчик с лямбдой executeSequence,
 // внутри которой был один-единственный вызов runCommand.
+// На Windows используется PuTTY или встроенный SSH клиент (Windows 10+)
 // ---------------------------------------------------------------------
 void MainWindow::sshKillProcess(const QString &processName)
 {
+#ifdef Q_OS_WIN
+    // Windows: используем ssh.exe (доступен в Windows 10+ или через Git Bash)
     runCommand("ssh", {"pi@192.168.8.45", "killall -9 " + processName});
+#else
+    runCommand("ssh", {"pi@192.168.8.45", "killall -9 " + processName});
+#endif
 }
 
 // ---------------------------------------------------------------------
@@ -191,6 +212,7 @@ void MainWindow::clearLineEditField(QLineEdit *edit, const QString &placeholder)
 // и libssh2. Раньше этот ~70-строчный блок был продублирован дословно
 // в двух обработчиках (on_pushButton_7_clicked и on_pushButton_16_clicked).
 // Предназначена для вызова из фонового потока (QtConcurrent::run), как и раньше.
+// Адаптирована для Windows/Unix совместимости
 // ---------------------------------------------------------------------
 bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
 {
@@ -199,30 +221,81 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
     const QString user = "pi";
     const QString password = "639639";
 
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) { qDebug() << "Socket error"; return false; }
+#ifdef Q_OS_WIN
+    // Инициализируем Winsock на Windows
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        qDebug() << "WSAStartup failed";
+        return false;
+    }
+#endif
+
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) {
+        qDebug() << "Socket error";
+#ifdef Q_OS_WIN
+        WSACleanup();
+#endif
+        return false;
+    }
 
     struct sockaddr_in sin{};
     sin.sin_family = AF_INET;
     sin.sin_port = htons(port);
     struct hostent* he = gethostbyname(host.toUtf8().constData());
-    if (!he) { ::close(sock); return false; }
+    if (!he) {
+        closesocket(sock);
+#ifdef Q_OS_WIN
+        WSACleanup();
+#endif
+        return false;
+    }
     sin.sin_addr = *(struct in_addr*)he->h_addr;
 
-    if (::connect(sock, (struct sockaddr*)&sin, sizeof(sin)) != 0) { ::close(sock); return false; }
+    if (::connect(sock, (struct sockaddr*)&sin, sizeof(sin)) != 0) {
+        closesocket(sock);
+#ifdef Q_OS_WIN
+        WSACleanup();
+#endif
+        return false;
+    }
 
     LIBSSH2_SESSION* session = libssh2_session_init();
-    if (!session) { ::close(sock); return false; }
-    if (libssh2_session_handshake(session, sock)) { libssh2_session_free(session); ::close(sock); return false; }
+    if (!session) {
+        closesocket(sock);
+#ifdef Q_OS_WIN
+        WSACleanup();
+#endif
+        return false;
+    }
+    if (libssh2_session_handshake(session, sock)) {
+        libssh2_session_free(session);
+        closesocket(sock);
+#ifdef Q_OS_WIN
+        WSACleanup();
+#endif
+        return false;
+    }
     if (libssh2_userauth_password(session, user.toUtf8().constData(), password.toUtf8().constData())) {
         libssh2_session_disconnect(session, "Bye");
         libssh2_session_free(session);
-        ::close(sock);
+        closesocket(sock);
+#ifdef Q_OS_WIN
+        WSACleanup();
+#endif
         return false;
     }
 
     LIBSSH2_SFTP* sftp = libssh2_sftp_init(session);
-    if (!sftp) { libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return false; }
+    if (!sftp) {
+        libssh2_session_disconnect(session, "Bye");
+        libssh2_session_free(session);
+        closesocket(sock);
+#ifdef Q_OS_WIN
+        WSACleanup();
+#endif
+        return false;
+    }
 
     LIBSSH2_SFTP_HANDLE* sftpHandle = libssh2_sftp_open(sftp,
         remoteFile.toUtf8().constData(),
@@ -230,7 +303,16 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
         LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR |
         LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
 
-    if (!sftpHandle) { libssh2_sftp_shutdown(sftp); libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return false; }
+    if (!sftpHandle) {
+        libssh2_sftp_shutdown(sftp);
+        libssh2_session_disconnect(session, "Bye");
+        libssh2_session_free(session);
+        closesocket(sock);
+#ifdef Q_OS_WIN
+        WSACleanup();
+#endif
+        return false;
+    }
 
     bool ok = false;
     QFile file(localPath);
@@ -238,13 +320,18 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
         QByteArray data = file.readAll();
         libssh2_sftp_write(sftpHandle, data.constData(), data.size());
         ok = true;
+        file.close();
     }
 
     libssh2_sftp_close(sftpHandle);
     libssh2_sftp_shutdown(sftp);
     libssh2_session_disconnect(session, "Bye");
     libssh2_session_free(session);
-    ::close(sock);
+    closesocket(sock);
+
+#ifdef Q_OS_WIN
+    WSACleanup();
+#endif
 
     if (ok)
         qDebug() << "File uploaded successfully:" << remoteFile;
@@ -252,51 +339,33 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
 }
 
 void MainWindow::on_pushButton_clicked()
-
 {
-
     QString input = on_lineEdit_textChanged();
-
     qDebug()<< input;
 
     QProcess process;
-
     QStringList arguments;
-
     arguments << input;
-
     QStringList anotherList = {input};
-
     QString program = "kodidlp";
 
     process.setProgram(program);
-
     process.setArguments(anotherList);
-
     process.start();
-
     process.waitForFinished();
-
 }
 
 void MainWindow::on_pushButton_info_clicked()
 {
-    // Получаем текст из lineEdit
     QString input = ui->lineEdit->text();
-
     qDebug() << input;
 
     QProcess process;
-
-    // Формируем аргументы для streamlink
     QStringList arguments;
     arguments << input;
 
-    // Указываем программу
     process.setProgram("streamlink");
     process.setArguments(arguments);
-
-    // Запуск процесса
     process.start();
 
     if (!process.waitForFinished()) {
@@ -304,18 +373,12 @@ void MainWindow::on_pushButton_info_clicked()
         return;
     }
 
-    // Чтение вывода (stdout)
     QString output = process.readAllStandardOutput();
-
-    // Если нужно — читаем ошибки
     QString errorOutput = process.readAllStandardError();
-
-    // Выводим в textEdit
     ui->textEdit_info->setText(output + "\n" + errorOutput);
 }
 
 QString  MainWindow::on_lineEdit_textChanged()
-
 {
      QString input = ui->lineEdit->text();
      return input;
@@ -326,17 +389,13 @@ void MainWindow::on_pushButton_2_clicked()
     postPlayerOpenChannel(1);
 }
 
-
 void MainWindow::on_pushButton_3_clicked()
 {
     postPlayerStop();
 }
 
-
 void MainWindow::on_pushButton_4_clicked()
 {
-
-
     QProcess process;
     QStringList arguments;
     arguments   << "-p"  	
@@ -346,13 +405,10 @@ void MainWindow::on_pushButton_4_clicked()
                 <<  "kodi &";                     
     process.start("sshpass", arguments);
     process.waitForFinished();        
-
 }
-
 
 void MainWindow::on_pushButton_6_clicked()
 {
-
     QProcess process;
     QStringList arguments;
     arguments   << "-p"
@@ -362,9 +418,7 @@ void MainWindow::on_pushButton_6_clicked()
               <<  "killall -9 kodi.bin  &";
     process.start("sshpass", arguments);
     process.waitForFinished();
-
 }
-
 
 void MainWindow::on_pushButton_5_clicked()
 {
@@ -379,23 +433,21 @@ void MainWindow::on_pushButton_5_clicked()
     process.waitForFinished();
 }
 
-
-
-
 QString  MainWindow::on_lineEdit_2_textChanged()
 {
     QString input = ui->lineEdit_2->text();
     return input;
 }
 
-
 void MainWindow::on_pushButton_7_clicked()
 {
-    // Берём текст из lineEdit_2
     QString input = ui->lineEdit_2->text();
+#ifdef Q_OS_WIN
+    QString filePath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/list.m3u";
+#else
     QString filePath = "/tmp/list.m3u";
+#endif
 
-    // 1️⃣ Создаём M3U
     QFile file(filePath);
     if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qCritical() << "Cannot create M3U file";
@@ -407,7 +459,6 @@ void MainWindow::on_pushButton_7_clicked()
 
     QPointer<MainWindow> safeThis(this);
 
-    // 2️⃣ Останавливаем плеер
     QJsonObject stop;
     stop["jsonrpc"] = "2.0";
     stop["method"] = "Player.Stop";
@@ -417,16 +468,12 @@ void MainWindow::on_pushButton_7_clicked()
     sendJsonRpc(stop, "Player.Stop", [safeThis, filePath](const QJsonObject &){
         if(!safeThis) return;
 
-        // 3️⃣ Асинхронный SFTP upload
         QtConcurrent::run([safeThis, filePath]() {
             if (!uploadFileViaSftp(filePath, "/var/www/html/list.m3u"))
                 return;
 
-            // 4️⃣ JSON-RPC в основном потоке
             if (!safeThis) return;
             QMetaObject::invokeMethod(safeThis, [safeThis]() {
-
-                // Включаем PVR
                 QJsonObject enable;
                 enable["jsonrpc"] = "2.0";
                 enable["method"] = "Addons.SetAddonEnabled";
@@ -436,14 +483,12 @@ void MainWindow::on_pushButton_7_clicked()
                 safeThis->sendJsonRpc(enable, "Enable PVR", [safeThis](const QJsonObject &){
                     if(!safeThis) return;
 
-                    // Запуск PVR scan
                     QJsonObject scan;
                     scan["jsonrpc"]="2.0";
                     scan["method"]="PVR.Scan";
                     scan["id"]=safeThis->rpcId++;
                     safeThis->sendJsonRpc(scan,"PVR scan");
 
-                    // Ждём появления каналов
                     auto waitForChannels = std::make_shared<std::function<void(int)>>();
                     *waitForChannels = [safeThis, waitForChannels](int attemptsLeft){
                         if(!safeThis) return;
@@ -473,7 +518,7 @@ void MainWindow::on_pushButton_7_clicked()
                                     int channelId = 1;
                                     if(!channels.isEmpty()){
                                         channelId = channels.first().toObject()["channelid"].toInt();
-                                        qDebug()<<"Opening first PVR channel:"<<channels.first().toObject()["label"].toString();
+                                        qDebug()<< "Opening first PVR channel:" <<channels.first().toObject()["label"].toString();
                                     }
                                     QJsonObject play;
                                     play["jsonrpc"]="2.0";
@@ -504,12 +549,10 @@ void MainWindow::on_pushButton_7_clicked()
     });
 }
 
-
 void MainWindow::on_pushButton_9_clicked()
 {
     postPlayerOpenFile("yt.mp4");
 }
-
 
 void runCommand(const QString &command, const QStringList &args) {
     QProcess process;
@@ -520,48 +563,30 @@ void runCommand(const QString &command, const QStringList &args) {
     qDebug() << "Ошибки:" << process.readAllStandardError();
 }
 
-
 void MainWindow::on_pushButton_8_clicked()
 {
     QString sshPrefix = "ssh";
     QString user = "pi@192.168.8.45";
 
-    // Последовательное выполнение команд с задержками
     auto executeSequence = [&]() {
-        // 1. sudo systemctl start youtubeUnblock
         runCommand(sshPrefix, {user, "sudo systemctl start youtubeUnblock"});
-
-        // 2. rm yt.mp4
         runCommand(sshPrefix, {user, "rm yt.mp4"});
-
-        // 3. killall -9 yt-dlp
         runCommand(sshPrefix, {user, "killall -9 yt-dlp"});
-
-        // 4. killall -9 ffmpeg
         runCommand(sshPrefix, {user, "killall -9 ffmpeg"});
-
-        // 5. sudo systemctl restart youtubeUnblock
         runCommand(sshPrefix, {user, "sudo systemctl restart youtubeUnblock"});
 
-        // 6. ./yt.sh $URL &
-        QString url = "your_video_url"; // замените на ваш URL
+        QString url = "your_video_url";
         QString input = on_lineEdit_3_textChanged();
        runCommand(sshPrefix, {user, "$HOME/.local/bin/yt-dlp  -f 91 " + input + " --no-part   -o yt.mp4 " " > /dev/null 2>&1 &"});
-        // 7. sleep 50
+        
         QTimer::singleShot(50000, this, [this]() {
             qDebug() << "Прошло 50 секунд.";
             postPlayerOpenFile("yt.mp4");
         });
-
-
-
     };
 
-    // Запуск последовательности
     executeSequence();
-
 }
-
 
 QString MainWindow::on_lineEdit_3_textChanged()
 {
@@ -569,36 +594,30 @@ QString MainWindow::on_lineEdit_3_textChanged()
     return input;
 }
 
-
 void MainWindow::on_pushButton_10_clicked()
 {
     postPlayerStop();
 }
-
 
 void MainWindow::on_pushButton_11_clicked()
 {
     sshKillProcess("yt-dlp");
 }
 
-
 void MainWindow::on_pushButton_12_clicked()
 {
     sshKillProcess("ffmpeg");
 }
-
 
 void MainWindow::on_pushButton_13_clicked()
 {
     postSetAddonEnabled("pvr.iptvsimple", QJsonValue("toggle"));
 }
 
-
 void MainWindow::on_pushButton_14_clicked()
 {
     postInputAction("back");
 }
-
 
 void MainWindow::on_pushButton_clearurl_clicked()
 {
@@ -606,33 +625,28 @@ void MainWindow::on_pushButton_clearurl_clicked()
     clearLineEditField(ui->lineEdit, "Введите URL...");
 }
 
-
-
-
-//получение урл для матч тв
 void MainWindow::on_pushButton_15_clicked()
 {
-
-QUrl url("https://matchtv.ru/on-air");
-
-    // Создаём и показываем встроенный плеер
+    QUrl url("https://matchtv.ru/on-air");
     PlayerWindow *player = new PlayerWindow(url, this);
-    player->setAttribute(Qt::WA_DeleteOnClose); // автоудаление при закрытии
+    player->setAttribute(Qt::WA_DeleteOnClose);
     player->show();
     connect(player, &PlayerWindow::urlCaptured,
             this, [&](const QUrl& capturedUrl){
-                ui->lineEdit_4->setText(capturedUrl.toString()); // Обращаемся через указатель
+                ui->lineEdit_4->setText(capturedUrl.toString());
             });
     qDebug() << "Открыт встроенный плеер:" << url.toString();
-
-
 }
+
 void MainWindow::on_pushButton_16_clicked()
 {
     QString input = ui->lineEdit_4->text();
+#ifdef Q_OS_WIN
+    QString filePath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/list.m3u";
+#else
     QString filePath = "/tmp/list.m3u";
+#endif
 
-    // 1️⃣ Создаём M3U
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qCritical() << "Cannot create M3U file";
@@ -648,7 +662,6 @@ void MainWindow::on_pushButton_16_clicked()
 
     QPointer<MainWindow> safeThis(this);
 
-    // 2️⃣ Останавливаем плеер
     QJsonObject stop;
     stop["jsonrpc"] = "2.0";
     stop["method"]  = "Player.Stop";
@@ -659,19 +672,16 @@ void MainWindow::on_pushButton_16_clicked()
                 [safeThis, filePath](const QJsonObject &) {
                     if (!safeThis) return;
 
-                    // 3️⃣ Асинхронный SFTP upload
                     QtConcurrent::run([safeThis, filePath]() {
                         if (!uploadFileViaSftp(filePath, "/var/www/html/list.m3u"))
                             return;
 
-                        // 4️⃣ Возврат в GUI-поток
                         if (!safeThis) return;
                         QMetaObject::invokeMethod(
                             safeThis,
                             [safeThis]() {
                                 if (!safeThis) return;
 
-                                // Enable PVR
                                 QJsonObject enable;
                                 enable["jsonrpc"] = "2.0";
                                 enable["method"]  = "Addons.SetAddonEnabled";
@@ -687,7 +697,6 @@ void MainWindow::on_pushButton_16_clicked()
                                     [safeThis](const QJsonObject &) {
                                         if (!safeThis) return;
 
-                                        // PVR.Scan
                                         QJsonObject scan;
                                         scan["jsonrpc"] = "2.0";
                                         scan["method"]  = "PVR.Scan";
@@ -699,11 +708,8 @@ void MainWindow::on_pushButton_16_clicked()
                                             [safeThis](const QJsonObject &) {
                                                 if (!safeThis) return;
 
-                                                // ⏱ Пауза 1 секунда после Scan
                                                 QTimer::singleShot(1000, safeThis, [safeThis]() {
                                                     if (!safeThis) return;
-
-                                                    // ===== Disable → Enable → Play =====
 
                                                     QJsonObject disable;
                                                     disable["jsonrpc"] = "2.0";
@@ -778,24 +784,25 @@ void MainWindow::on_pushButton_16_clicked()
                 );
 }
 
-
 void MainWindow::on_getonairnow_clicked()
 {
  ui->textBrowseronairnow->clear();
 
-    // 1. Читаем скрипт из ресурсов
     QFile src(":/match_now.py");
     if (!src.open(QIODevice::ReadOnly | QIODevice::Text)) {
         ui->textBrowseronairnow->setHtml("<font color='red'>Ошибка: не найден скрипт<br>:/scripts/match_now.py</font>");
         return;
     }
 
-    // 2. Создаём временный файл с правильным именем и правами (важно для FreeBSD!)
+#ifdef Q_OS_WIN
+    QString scriptPath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/kodigui_match_now.py";
+#else
     QString scriptPath = QDir::tempPath() + "/kodigui_match_now.py";
+#endif
     {
         QFile temp(scriptPath);
         if (!temp.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            ui->textBrowseronairnow->append("Не могу записать временный файл в /tmp");
+            ui->textBrowseronairnow->append("Не могу записать временный файл");
             return;
         }
         temp.write(src.readAll());
@@ -804,24 +811,24 @@ void MainWindow::on_getonairnow_clicked()
         temp.close();
     }
 
-    // 3. Используем точно тот Python, который у тебя есть
+#ifdef Q_OS_WIN
+    QString pythonCmd = "python3";  // или "python" на Windows
+#else
     QString pythonCmd = "/usr/local/bin/python3.11";
+#endif
 
     ui->textBrowseronairnow->append("<i>Запуск матча...</i>");
     ui->textBrowseronairnow->append("<small>" + pythonCmd + " " + scriptPath + "</small><hr>");
 
-    // 4. Настраиваем процесс
     pythonProcess->setProcessChannelMode(QProcess::MergedChannels);
 
-    // Живой вывод в textBrowseronairnow
-    disconnect(pythonProcess, &QProcess::readyReadStandardOutput, nullptr, nullptr); // на всякий
+    disconnect(pythonProcess, &QProcess::readyReadStandardOutput, nullptr, nullptr);
     connect(pythonProcess, &QProcess::readyReadStandardOutput, this, [this]() {
         QString out = pythonProcess->readAllStandardOutput();
         ui->textBrowseronairnow->append(out.trimmed());
     });
 
-    // 5. По завершении — удаляем файл и пишем статус
-      pythonProcess->disconnect(); // чистим все старые сигналы
+    pythonProcess->disconnect();
 
     connect(pythonProcess, &QProcess::readyReadStandardOutput, this, [this]() {
         ui->textBrowseronairnow->append(pythonProcess->readAllStandardOutput().trimmed());
@@ -852,48 +859,28 @@ void MainWindow::on_stopdrm_18_clicked()
     postPlayerStop();
 }
 
-
 void MainWindow::on_pushButton_rundrm_clicked()
 {
-
     QString sshPrefix = "ssh";
     QString user = "pi@192.168.8.45";
 
-    // Последовательное выполнение команд с задержками
     auto executeSequence = [&]() {
-
-         //3 
-         sshKillProcess("N_m3u8DL-RE");
-        //4 
+        sshKillProcess("N_m3u8DL-RE");
         runCommand(sshPrefix, {user, "rm -R $HOME/drm.ts"});
-        //5
-
-         runCommand(sshPrefix, {user, "rm -R $HOME/drm"});
+        runCommand(sshPrefix, {user, "rm -R $HOME/drm"});
         
-        // 6. N_m3u8DL-RE
         QString input = on_lineEdit_drm_textChanged();
         QString keydrm = on_lineEdit_drm_key_textChanged();
 
-        // N_m3u8DL-RE $1 -M format=mp4 --key  $2 -sv worst    --save-name "drm" --save-dir  $HOME  --live-pipe-mux   --select-audio id="audio_aar=128000"
-        runCommand(sshPrefix, {user, "N_m3u8DL-RE "+input+" -M format=mp4 --key  "+keydrm+" -sv worst    --save-name drm --save-dir  $HOME  --live-pipe-mux   --select-audio id='audio_aar=128000' " " > /dev/null 2>&1 &"});
-        // 7. sleep 50
+        runCommand(sshPrefix, {user, "N_m3u8DL-RE "+input+" -M format=mp4 --key  "+keydrm+" -sv worst    --save-name drm --save-dir  $HOME  --live-pipe-mux   --select-audio id='audio_aar=128000' "});
+        
         QTimer::singleShot(50000, []() {
             qDebug() << "Прошло 50 секунд.";
-            // Можно добавить дальнейшие действия после ожидания
-
-
         });
-
-
-
     };
 
-    // Запуск последовательности
     executeSequence();
-
-
 }
-
 
 QString MainWindow::on_lineEdit_drm_textChanged()
 {
@@ -901,19 +888,16 @@ QString MainWindow::on_lineEdit_drm_textChanged()
     return input;
 }
 
-
 QString MainWindow::on_lineEdit_drm_key_textChanged()
 {
     QString input = ui->lineEdit_drm_key->text();
     return input;
 }
 
-
 void MainWindow::on_pushButton_killstreamlink_clicked()
 {
     sshKillProcess("streamlink");
 }
-
 
 void MainWindow::on_pushButton_cleardrm_clicked()
 {
@@ -921,46 +905,39 @@ void MainWindow::on_pushButton_cleardrm_clicked()
     clearLineEditField(ui->lineEdit_drm_key, "Введите key...");
 }
 
-
 void MainWindow::on_pushButton_playdrmts_clicked()
 {
     postPlayerOpenFile("drm.ts");
 }
-
 
 void MainWindow::on_pushButton_kill_m3u8DL_clicked()
 {
     sshKillProcess("N_m3u8DL-RE");
 }
 
-
 void MainWindow::on_pushButton_17_clicked()
 {
     postInputAction("back");
 }
-
 
 void MainWindow::on_pushButton_playdrmaarts_clicked()
 {
     postPlayerOpenFile("drm.aar.ts");
 }
 
-
 void MainWindow::on_pushButton_18_clicked()
 {
     QProcess *process = new QProcess(this);
 
-    connect(process, &QProcess::readyReadStandardOutput, this, [=]()
-            {
-                QByteArray data = process->readAllStandardOutput();
-                ui->textEdit->append(QString::fromUtf8(data));
-            });
+    connect(process, &QProcess::readyReadStandardOutput, this, [=]() {
+        QByteArray data = process->readAllStandardOutput();
+        ui->textEdit->append(QString::fromUtf8(data));
+    });
 
-    connect(process, &QProcess::readyReadStandardError, this, [=]()
-            {
-                QByteArray data = process->readAllStandardError();
-                ui->textEdit->append(QString::fromUtf8(data));
-            });
+    connect(process, &QProcess::readyReadStandardError, this, [=]() {
+        QByteArray data = process->readAllStandardError();
+        ui->textEdit->append(QString::fromUtf8(data));
+    });
 
     QString program = "sshpass";
     QStringList arguments;
@@ -972,5 +949,3 @@ void MainWindow::on_pushButton_18_clicked()
     ui->textEdit->clear();
     process->start(program, arguments);
 }
-
-

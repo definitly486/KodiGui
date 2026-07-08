@@ -28,10 +28,22 @@ qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
+# Windows-specific configuration
+win32 {
+    # libssh2 paths for Windows (adjust according to your installation)
+    LIBS += -L$$PWD/libs/libssh2/lib -lssh2
+    INCLUDEPATH += $$PWD/libs/libssh2/include
+    
+    # OpenSSL (usually required by libssh2 on Windows)
+    LIBS += -L$$PWD/libs/openssl/lib -lssl -lcrypto
+    INCLUDEPATH += $$PWD/libs/openssl/include
+}
 
+# Unix-specific configuration
+unix:!win32 {
+    LIBS += -L/usr/local/lib -lssh2
+    INCLUDEPATH += /usr/local/include
+}
 
 RESOURCES += \
    resource.qrc
-
-LIBS += -L/usr/local/lib -lssh2
-INCLUDEPATH += /usr/local/include
