@@ -252,37 +252,29 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
 }
 
 void MainWindow::on_pushButton_clicked()
-
 {
-
     QString input = on_lineEdit_textChanged();
 
-    qDebug()<< input;
+    qDebug() << input;
 
     QProcess process;
-
     QStringList arguments;
-
     arguments << input;
 
     QStringList anotherList = {input};
 
     QString program = "kodidlp";
-
     process.setProgram(program);
-
     process.setArguments(anotherList);
 
     process.start();
-
     process.waitForFinished();
-
 }
 
 void MainWindow::on_pushButton_info_clicked()
 {
-    // Получаем текст из lineEdit
-    QString input = ui->lineEdit->text();
+    // Получаем текст из lineEdit (с заменой vksport-ссылок на vk.ru)
+    QString input = on_lineEdit_textChanged();
 
     qDebug() << input;
 
@@ -314,10 +306,17 @@ void MainWindow::on_pushButton_info_clicked()
     ui->textEdit_info->setText(output + "\n" + errorOutput);
 }
 
-QString  MainWindow::on_lineEdit_textChanged()
-
+QString MainWindow::on_lineEdit_textChanged()
 {
      QString input = ui->lineEdit->text();
+
+     static const QRegularExpression vksportRe(
+         "^https://vksport\\.vkvideo\\.ru/live-(\\d+_\\d+)$");
+     QRegularExpressionMatch match = vksportRe.match(input);
+     if (match.hasMatch()) {
+         input = "https://vk.ru/video-" + match.captured(1);
+     }
+
      return input;
 }
 
