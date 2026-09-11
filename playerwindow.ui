@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PlayerWindow</class>
+ <widget class="QMainWindow" name="PlayerWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1000</width>
+    <height>700</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>HTML5 Player – LiveTV WebPlayer</string>
+  </property>
+  <property name="windowIcon">
+   <iconset>
+    <normaloff>:/icons/player.png</normaloff>:/icons/player.png</iconset>
+  </property>
+
+  <!-- Центральный виджет — просто пустой QWidget, 
+       в него мы вручную положим QWebEngineView в playerwindow.cpp -->
+  <widget class="QWidget" name="centralwidget"/>
+
+  <!-- Строка меню (по желанию, можно оставить пустой или добавить "Exit") -->
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1000</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+
+  <!-- Статус-бар (по желанию) -->
+  <widget class="QStatusBar" name="statusbar"/>
+
+ </widget>
+
+ <resources/>
+ <connections/>
+</ui>
