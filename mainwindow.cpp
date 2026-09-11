@@ -631,6 +631,11 @@ void MainWindow::on_pushButton_16_clicked()
     QString input = ui->lineEdit_4->text();
     QString filePath = "/tmp/list.m3u";
 
+    if (input.trimmed().isEmpty()) {
+        qWarning() << "Match TV: URL is empty — press \"Получить URL\" first";
+        return;
+    }
+
     // 1️⃣ Создаём M3U
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -660,8 +665,10 @@ void MainWindow::on_pushButton_16_clicked()
 
                     // 3️⃣ Асинхронный SFTP upload
                     QtConcurrent::run([safeThis, filePath]() {
-                        if (!uploadFileViaSftp(filePath, "/var/www/html/list.m3u"))
+                        if (!uploadFileViaSftp(filePath, "/var/www/html/list.m3u")) {
+                            qWarning() << "Match TV: SFTP upload failed, aborting";
                             return;
+                        }
 
                         // 4️⃣ Возврат в GUI-поток
                         if (!safeThis) return;
@@ -683,10 +690,16 @@ void MainWindow::on_pushButton_16_clicked()
                                 safeThis->sendJsonRpc(
                                     enable,
                                     "Enable PVR",
-                                    [safeThis](const QJsonObject &) {
+                                    [safeThis](const QJsonObject &enableResp) {
                                         if (!safeThis) return;
+                                        if (enableResp.contains("error")) {
+                                            qWarning() << "Match TV: Enable PVR error:" << enableResp["error"];
+                                            return;
+                                        }
 
-                                        // PVR.Scan
+                                        // PVR.Scan — НЕ трогаем SetAddonEnabled(false/true) вокруг
+                                        // него: быстрый disable/enable аддона во время скана —
+                                        // это race condition, из-за которой иногда падал Kodi.
                                         QJsonObject scan;
                                         scan["jsonrpc"] = "2.0";
                                         scan["method"]  = "PVR.Scan";
@@ -695,80 +708,100 @@ void MainWindow::on_pushButton_16_clicked()
                                         safeThis->sendJsonRpc(
                                             scan,
                                             "PVR.Scan",
-                                            [safeThis](const QJsonObject &) {
+                                            [safeThis](const QJsonObject &scanResp) {
                                                 if (!safeThis) return;
+                                                if (scanResp.contains("error")) {
+                                                    qWarning() << "Match TV: PVR.Scan error:" << scanResp["error"];
+                                                    return;
+                                                }
 
-                                                // ⏱ Пауза 1 секунда после Scan
-                                                QTimer::singleShot(1000, safeThis, [safeThis]() {
+                                                // ===== Опрашиваем PVR, пока канал реально не
+                                                // появится, вместо угадывания задержки =====
+                                                auto waitForChannel = std::make_shared<std::function<void(int)>>();
+                                                *waitForChannel = [safeThis, waitForChannel](int attemptsLeft) {
                                                     if (!safeThis) return;
 
-                                                    // ===== Disable → Enable → Play =====
-
-                                                    QJsonObject disable;
-                                                    disable["jsonrpc"] = "2.0";
-                                                    disable["method"]  = "Addons.SetAddonEnabled";
-                                                    disable["params"]  = QJsonObject{
-                                                        {"addonid", "pvr.iptvsimple"},
-                                                        {"enabled", false}
-                                                    };
-                                                    disable["id"] = safeThis->rpcId++;
+                                                    QJsonObject getGroups;
+                                                    getGroups["jsonrpc"] = "2.0";
+                                                    getGroups["method"]  = "PVR.GetChannelGroups";
+                                                    getGroups["id"]      = safeThis->rpcId++;
 
                                                     safeThis->sendJsonRpc(
-                                                        disable,
-                                                        "Disable pvr.iptvsimple",
-                                                        [safeThis](const QJsonObject &) {
+                                                        getGroups, "Get Channel Groups",
+                                                        [safeThis, attemptsLeft, waitForChannel](const QJsonObject &resp) {
                                                             if (!safeThis) return;
+                                                            if (resp.contains("error")) {
+                                                                qWarning() << "Match TV: GetChannelGroups error:" << resp["error"];
+                                                                return;
+                                                            }
 
-                                                            QTimer::singleShot(3000, safeThis, [safeThis]() {
-                                                                if (!safeThis) return;
+                                                            QJsonArray groups = resp["result"].toObject()["channelgroups"].toArray();
+                                                            if (!groups.isEmpty()) {
+                                                                QString groupId = groups.first().toObject()["channelgroupid"].toString();
 
-                                                                QJsonObject enableAgain;
-                                                                enableAgain["jsonrpc"] = "2.0";
-                                                                enableAgain["method"]  = "Addons.SetAddonEnabled";
-                                                                enableAgain["params"]  = QJsonObject{
-                                                                    {"addonid", "pvr.iptvsimple"},
-                                                                    {"enabled", true}
+                                                                QJsonObject getChannels;
+                                                                getChannels["jsonrpc"] = "2.0";
+                                                                getChannels["method"]  = "PVR.GetChannels";
+                                                                getChannels["params"]  = QJsonObject{
+                                                                    {"channelgroupid", groupId},
+                                                                    {"properties", QJsonArray{"channelnumber", "label"}}
                                                                 };
-                                                                enableAgain["id"] = safeThis->rpcId++;
+                                                                getChannels["id"] = safeThis->rpcId++;
 
                                                                 safeThis->sendJsonRpc(
-                                                                    enableAgain,
-                                                                    "Enable pvr.iptvsimple",
-                                                                    [safeThis](const QJsonObject &) {
+                                                                    getChannels, "Get Channels",
+                                                                    [safeThis, attemptsLeft, waitForChannel](const QJsonObject &chResp) {
                                                                         if (!safeThis) return;
+                                                                        if (chResp.contains("error")) {
+                                                                            qWarning() << "Match TV: GetChannels error:" << chResp["error"];
+                                                                            return;
+                                                                        }
 
-                                                                        QTimer::singleShot(1000, safeThis, [safeThis]() {
-                                                                            if (!safeThis) return;
+                                                                        QJsonArray channels = chResp["result"].toObject()["channels"].toArray();
+                                                                        if (channels.isEmpty()) {
+                                                                            if (attemptsLeft > 1) {
+                                                                                QTimer::singleShot(1000, safeThis, [waitForChannel, attemptsLeft]() {
+                                                                                    (*waitForChannel)(attemptsLeft - 1);
+                                                                                });
+                                                                            } else {
+                                                                                qWarning() << "Match TV: no channels appeared after scan, giving up";
+                                                                            }
+                                                                            return;
+                                                                        }
 
-                                                                            QJsonObject play;
-                                                                            play["jsonrpc"] = "2.0";
-                                                                            play["method"]  = "Player.Open";
-                                                                            play["params"]  = QJsonObject{
-                                                                                {"item", QJsonObject{
-                                                                                             {"channelid", 1}
-                                                                                         }}
-                                                                            };
-                                                                            play["id"] = safeThis->rpcId++;
+                                                                        int channelId = channels.first().toObject()["channelid"].toInt();
+                                                                        qDebug() << "Match TV: opening channel"
+                                                                                 << channels.first().toObject()["label"].toString();
 
-                                                                            safeThis->sendJsonRpc(
-                                                                                play,
-                                                                                "Play channel",
-                                                                                [safeThis](const QJsonObject &) {
-                                                                                    if (!safeThis) return;
-                                                                                    qDebug() << "Channel 1 playback started";
-                                                                                }
-                                                                                );
-                                                                        });
-                                                                    }
-                                                                    );
-                                                            });
-                                                        }
-                                                        );
-                                                });
-                                            }
-                                            );
-                                    }
-                                    );
+                                                                        QJsonObject play;
+                                                                        play["jsonrpc"] = "2.0";
+                                                                        play["method"]  = "Player.Open";
+                                                                        play["params"]  = QJsonObject{
+                                                                            {"item", QJsonObject{{"channelid", channelId}}}
+                                                                        };
+                                                                        play["id"] = safeThis->rpcId++;
+
+                                                                        safeThis->sendJsonRpc(
+                                                                            play, "Play channel",
+                                                                            [](const QJsonObject &playResp) {
+                                                                                if (playResp.contains("error"))
+                                                                                    qWarning() << "Match TV: Player.Open error:" << playResp["error"];
+                                                                                else
+                                                                                    qDebug() << "Match TV: playback started";
+                                                                            });
+                                                                    });
+                                                            } else if (attemptsLeft > 1) {
+                                                                QTimer::singleShot(1000, safeThis, [waitForChannel, attemptsLeft]() {
+                                                                    (*waitForChannel)(attemptsLeft - 1);
+                                                                });
+                                                            } else {
+                                                                qWarning() << "Match TV: no channel groups appeared after scan, giving up";
+                                                            }
+                                                        });
+                                                };
+                                                (*waitForChannel)(5);
+                                            });
+                                    });
                             },
                             Qt::QueuedConnection
                             );
