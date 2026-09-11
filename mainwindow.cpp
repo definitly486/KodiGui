@@ -729,6 +729,9 @@ void MainWindow::on_pushButton_16_clicked()
                                                     QJsonObject getGroups;
                                                     getGroups["jsonrpc"] = "2.0";
                                                     getGroups["method"]  = "PVR.GetChannelGroups";
+                                                    getGroups["params"]  = QJsonObject{
+                                                        {"channeltype", "tv"}
+                                                    };
                                                     getGroups["id"]      = safeThis->rpcId++;
 
                                                     safeThis->sendJsonRpc(
