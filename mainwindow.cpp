@@ -677,20 +677,43 @@ void MainWindow::on_pushButton_16_clicked()
                             [safeThis]() {
                                 if (!safeThis) return;
 
-                                // Enable PVR
-                                QJsonObject enable;
-                                enable["jsonrpc"] = "2.0";
-                                enable["method"]  = "Addons.SetAddonEnabled";
-                                enable["params"]  = QJsonObject{
+                                // Перезапуск PVR-клиента: если аддон уже был включён,
+                                // повторный Enable — это no-op и plist.m3u не перечитывается.
+                                // Поэтому сначала гарантированно выключаем...
+                                QJsonObject disable;
+                                disable["jsonrpc"] = "2.0";
+                                disable["method"]  = "Addons.SetAddonEnabled";
+                                disable["params"]  = QJsonObject{
                                     {"addonid", "pvr.iptvsimple"},
-                                    {"enabled", true}
+                                    {"enabled", false}
                                 };
-                                enable["id"] = safeThis->rpcId++;
+                                disable["id"] = safeThis->rpcId++;
 
                                 safeThis->sendJsonRpc(
-                                    enable,
-                                    "Enable PVR",
-                                    [safeThis](const QJsonObject &enableResp) {
+                                    disable,
+                                    "Disable PVR",
+                                    [safeThis](const QJsonObject &disableResp) {
+                                        if (!safeThis) return;
+                                        if (disableResp.contains("error")) {
+                                            qWarning() << "Match TV: Disable PVR error:" << disableResp["error"];
+                                            // не фатально — пробуем включить всё равно
+                                        }
+
+                                        // ...а затем включаем заново — только тогда клиент
+                                        // пересоздаётся и подхватывает новый list.m3u с сервера.
+                                        QJsonObject enable;
+                                        enable["jsonrpc"] = "2.0";
+                                        enable["method"]  = "Addons.SetAddonEnabled";
+                                        enable["params"]  = QJsonObject{
+                                            {"addonid", "pvr.iptvsimple"},
+                                            {"enabled", true}
+                                        };
+                                        enable["id"] = safeThis->rpcId++;
+
+                                        safeThis->sendJsonRpc(
+                                            enable,
+                                            "Enable PVR",
+                                            [safeThis](const QJsonObject &enableResp) {
                                         if (!safeThis) return;
                                         if (enableResp.contains("error")) {
                                             qWarning() << "Match TV: Enable PVR error:" << enableResp["error"];
@@ -816,6 +839,7 @@ void MainWindow::on_pushButton_16_clicked()
                                                     (*waitForChannel)(5);
                                                 });
                                             });
+                                    });
                                     });
                             },
                             Qt::QueuedConnection
