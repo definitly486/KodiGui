@@ -745,7 +745,10 @@ void MainWindow::on_pushButton_16_clicked()
 
                                                             QJsonArray groups = resp["result"].toObject()["channelgroups"].toArray();
                                                             if (!groups.isEmpty()) {
-                                                                QString groupId = groups.first().toObject()["channelgroupid"].toString();
+                                                                // channelgroupid в ответе Kodi — число,
+                                                                // а не строка; toString() на нём вернул бы
+                                                                // "" и ломал GetChannels ниже.
+                                                                QJsonValue groupId = groups.first().toObject()["channelgroupid"];
 
                                                                 QJsonObject getChannels;
                                                                 getChannels["jsonrpc"] = "2.0";
