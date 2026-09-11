@@ -755,7 +755,7 @@ void MainWindow::on_pushButton_16_clicked()
                                                                 getChannels["method"]  = "PVR.GetChannels";
                                                                 getChannels["params"]  = QJsonObject{
                                                                     {"channelgroupid", groupId},
-                                                                    {"properties", QJsonArray{"channelnumber", "label"}}
+                                                                    {"properties", QJsonArray{"channel"}}
                                                                 };
                                                                 getChannels["id"] = safeThis->rpcId++;
 
@@ -782,7 +782,7 @@ void MainWindow::on_pushButton_16_clicked()
 
                                                                         int channelId = channels.first().toObject()["channelid"].toInt();
                                                                         qDebug() << "Match TV: opening channel"
-                                                                                 << channels.first().toObject()["label"].toString();
+                                                                                 << channels.first().toObject()["channel"].toString();
 
                                                                         QJsonObject play;
                                                                         play["jsonrpc"] = "2.0";
