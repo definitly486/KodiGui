@@ -711,8 +711,13 @@ void MainWindow::on_pushButton_16_clicked()
                                             [safeThis](const QJsonObject &scanResp) {
                                                 if (!safeThis) return;
                                                 if (scanResp.contains("error")) {
-                                                    qWarning() << "Match TV: PVR.Scan error:" << scanResp["error"];
-                                                    return;
+                                                    // PVR.Scan часто отдаёт -32100 сразу после
+                                                    // включения аддона (PVR-менеджер ещё не успел
+                                                    // зарегистрировать бэкенд) — это не фатально,
+                                                    // список каналов обычно всё равно появляется.
+                                                    // Не прерываем цепочку, просто логируем и идём
+                                                    // дальше в polling.
+                                                    qWarning() << "Match TV: PVR.Scan error (non-fatal, continuing):" << scanResp["error"];
                                                 }
 
                                                 // ===== Опрашиваем PVR, пока канал реально не
@@ -799,7 +804,11 @@ void MainWindow::on_pushButton_16_clicked()
                                                             }
                                                         });
                                                 };
-                                                (*waitForChannel)(5);
+                                                // Небольшая пауза перед первой попыткой — даём
+                                                // скану/бэкенду время на инициализацию.
+                                                QTimer::singleShot(500, safeThis, [waitForChannel]() {
+                                                    (*waitForChannel)(5);
+                                                });
                                             });
                                     });
                             },
