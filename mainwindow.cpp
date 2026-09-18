@@ -311,7 +311,7 @@ QString MainWindow::on_lineEdit_textChanged()
      QString input = ui->lineEdit->text();
 
      static const QRegularExpression vksportRe(
-         "^https://vksport\\.vkvideo\\.ru/live-(\\d+_\\d+)$");
+         "^https://vksport\\.vkvideo\\.ru/(?:live|video)-(\\d+_\\d+)$");
      QRegularExpressionMatch match = vksportRe.match(input);
      if (match.hasMatch()) {
          input = "https://vk.ru/video-" + match.captured(1);
