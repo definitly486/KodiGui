@@ -545,7 +545,7 @@ void MainWindow::on_pushButton_8_clicked()
         // 6. ./yt.sh $URL &
         QString url = "your_video_url"; // замените на ваш URL
         QString input = on_lineEdit_3_textChanged();
-       runCommand(sshPrefix, {user, "$HOME/.local/bin/yt-dlp  -f 91 " + input + " --no-part   -o yt.mp4 " " > /dev/null 2>&1 &"});
+       runCommand(sshPrefix, {user, "$HOME/.local/bin/yt-dlp  -f 269+234 " + input + " --no-part   -o yt.mp4 " " > /dev/null 2>&1 &"});
         // 7. sleep 50
         QTimer::singleShot(50000, this, [this]() {
             qDebug() << "Прошло 50 секунд.";
