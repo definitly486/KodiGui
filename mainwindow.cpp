@@ -332,21 +332,27 @@ void MainWindow::on_pushButton_3_clicked()
 }
 
 
+
 void MainWindow::on_pushButton_4_clicked()
 {
-
-
-    QProcess process;
     QStringList arguments;
-    arguments   << "-p"  	
-		<< "639639"            
-		<< "ssh"
-                <<  "pi@192.168.8.45"
-                <<  "kodi &";                     
-    process.start("sshpass", arguments);
-    process.waitForFinished();        
+    arguments << "-p"
+              << "639639"
+              << "ssh"
+              << "-o"
+              << "ConnectTimeout=10"
+              << "pi@192.168.8.45"
+              << "nohup kodi >/dev/null 2>&1 </dev/null &";
 
+    const bool started = QProcess::startDetached("sshpass", arguments);
+
+    if (!started) {
+        qWarning() << "Start Kodi: failed to launch sshpass";
+    } else {
+        qDebug() << "Start Kodi: SSH launch initiated";
+    }
 }
+
 
 
 void MainWindow::on_pushButton_6_clicked()
