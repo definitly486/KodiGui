@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QFile>
 #include <QTextStream>
+#include <QDir>
 #include <QTimer>
 #include <QLineEdit>
 #include <functional>
@@ -885,11 +886,47 @@ void MainWindow::on_stopdrm_18_clicked()
 void MainWindow::on_pushButton_rundrm_clicked()
 {
     const QString user = "pi@192.168.8.45";
-    const QString input  = on_lineEdit_drm_textChanged().trimmed();
-    const QString keydrm = on_lineEdit_drm_key_textChanged().trimmed();
+    QString input = on_lineEdit_drm_textChanged().trimmed();
+    QString keydrm = on_lineEdit_drm_key_textChanged().trimmed();
+
+    // Если хотя бы одно поле пустое, пытаемся взять недостающие значения
+    // из ~/Downloads/widevine_key.txt: первая строка — URL, вторая — key.
+    if (input.isEmpty() || keydrm.isEmpty()) {
+        const QString keyFilePath =
+            QDir::homePath() + "/Downloads/widevine_key.txt";
+        QFile keyFile(keyFilePath);
+
+        if (!keyFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, "DRM",
+                                 "Не удалось открыть файл:\n" + keyFilePath);
+            return;
+        }
+
+        QTextStream stream(&keyFile);
+        const QStringList lines = stream.readAll().split(
+            QRegularExpression("[\\r\\n]+"), Qt::SkipEmptyParts);
+        keyFile.close();
+
+        if (lines.size() < 2) {
+            QMessageBox::warning(this, "DRM",
+                                 "В файле должны быть две строки:\n"
+                                 "1 — DRM URL\n2 — DRM key");
+            return;
+        }
+
+        if (input.isEmpty()) {
+            input = lines.at(0).trimmed();
+            ui->lineEdit_drm->setText(input);
+        }
+        if (keydrm.isEmpty()) {
+            keydrm = lines.at(1).trimmed();
+            ui->lineEdit_drm_key->setText(keydrm);
+        }
+    }
 
     if (input.isEmpty() || keydrm.isEmpty()) {
-        qWarning() << "DRM: URL или key пустые";
+        QMessageBox::warning(this, "DRM",
+                             "DRM URL или key не заполнены.");
         return;
     }
 
@@ -900,7 +937,6 @@ void MainWindow::on_pushButton_rundrm_clicked()
     runCommand("ssh", {user, "rm -rf $HOME/drm.ts $HOME/drm"});
 
     // 3. Запускаем N_m3u8DL-RE в фоне на Pi
-    //    nohup + redirect + & — SSH сразу возвращает управление
     const QString remoteCmd = QString(
         "nohup N_m3u8DL-RE %1 -M format=mp4 --key %2 -sv worst "
         "--save-name drm --save-dir $HOME --live-pipe-mux "
