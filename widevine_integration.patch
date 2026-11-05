@@ -1,0 +1,353 @@
+diff --git a/drm_tools/extract_key.py b/drm_tools/extract_key.py
+new file mode 100644
+index 0000000..8a7b9c1
+--- /dev/null
++++ b/drm_tools/extract_key.py
+@@ -0,0 +1,55 @@
++import sys
++import os
++import json
++
++# Добавляем пути к wheel-библиотекам (скопируйте их из вашего проекта widevine-l3-decrypter)
++sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'libs', 'wheels'))
++
++try:
++    from pywidevine.device import Device
++    from pywidevine.pssh import PSSH
++    from pywidevine.decrypt.wvdecryptcustom import WvDecrypt
++    import requests
++except ImportError as e:
++    print(f"ERROR_IMPORT: Отсутствуют библиотеки. Установите pywidevine, pycryptodome, requests, protobuf. ({e})")
++    sys.exit(1)
++
++def main():
++    if len(sys.argv) < 5:
++        print("USAGE: python3 extract_key.py <pssh_b64> <lic_url> <lic_headers_json> <device_wvd_path>")
++        sys.exit(1)
++
++    pssh_b64 = sys.argv[1]
++    lic_url = sys.argv[2]
++    lic_headers_json = sys.argv[3]
++    device_path = sys.argv[4]
++
++    try:
++        # 1. Загрузка устройства (CDM)
++        device = Device.load(device_path)
++        
++        # 2. Парсинг PSSH
++        pssh_obj = PSSH(pssh_b64)
++        
++        # 3. Инициализация дешифратора
++        wvdecrypt = WvDecrypt(init_data_b64=pssh_b64, cert_data_b64=None, device=device)
++        challenge = wvdecrypt.get_challenge()
++        
++        # 4. Отправка запроса на лицензионный сервер
++        headers = json.loads(lic_headers_json) if lic_headers_json else {"Content-Type": "application/octet-stream"}
++        
++        response = requests.post(lic_url, data=challenge, headers=headers, timeout=15)
++        
++        if response.status_code == 200:
++            wvdecrypt.update_license(response.content)
++            keys = wvdecrypt.start_process()
++            
++            if keys:
++                for key in keys:
++                    print(f"KEY_FOUND:{key.kid.hex()}:{key.key.hex()}")
++            else:
++                print("ERROR: Ключи не найдены в ответе лицензии")
++        else:
++            print(f"ERROR_LICENSE: HTTP {response.status_code} - {response.text[:100]}")
++            
++    except Exception as e:
++        print(f"ERROR_EXCEPTION: {str(e)}")
++
++if __name__ == "__main__":
++    main()
+diff --git a/m3u8interceptor.cpp b/m3u8interceptor.cpp
+index 1234567..abcdefg 100644
+--- a/m3u8interceptor.cpp
++++ b/m3u8interceptor.cpp
+@@ -1,16 +1,42 @@
+ // m3u8interceptor.cpp
+ #include "m3u8interceptor.h"
+ #include <QDebug>
++#include <QJsonDocument>
++#include <QJsonObject>
+ 
+ M3u8Interceptor::M3u8Interceptor(QObject *parent)
+     : QWebEngineUrlRequestInterceptor(parent)
+ {
++    m_lastLicenseReq.isValid = false;
+ }
+ 
+ void M3u8Interceptor::interceptRequest(QWebEngineUrlRequestInfo &info)
+ {
+     const QString url = info.requestUrl().toString();
++    const QString method = info.requestMethod();
++
++    // 1. Ловим манифесты (MPD для DASH, M3U8 для HLS)
+     if (url.contains(".m3u8") && url.startsWith("http")) {
+         qDebug().noquote() << "INTERCEPTOR → УНИВЕРСАЛЬНЫЙ ПОТОК:" << url;
+-        emit streamFound(url);
+-        return; // один раз — и хватит
++        emit const_cast<M3u8Interceptor*>(this)->streamFound(url);
++        return;
++    }
++
++    if (url.contains(".mpd") && url.startsWith("http")) {
++        qDebug().noquote() << "INTERCEPTOR → DASH MANIFEST:" << url;
++        emit const_cast<M3u8Interceptor*>(this)->streamFound(url);
++        return;
++    }
++
++    // 2. Ловим POST-запросы к лицензионным серверам Widevine
++    if (method == "POST" && (url.contains("license") || url.contains("widevine") || url.contains("drm") || url.contains("cenc"))) {
++        qDebug().noquote() << "INTERCEPTOR → LICENSE REQUEST CAUGHT:" << url;
++        
++        m_lastLicenseReq.url = url;
++        m_lastLicenseReq.headers = convertHeaders(info.requestHeaders());
++        m_lastLicenseReq.isValid = true;
+     }
+ }
++
++QString M3u8Interceptor::convertHeaders(const QList<QWebEngineHttpRequestHeader> &headers) const
++{
++    QJsonObject json;
++    for (const auto &header : headers) {
++        json[QString::fromUtf8(header.name())] = QString::fromUtf8(header.value());
++    }
++    return QString(QJsonDocument(json).toJson(QJsonDocument::Compact));
++}
+diff --git a/m3u8interceptor.h b/m3u8interceptor.h
+index 1234567..abcdefg 100644
+--- a/m3u8interceptor.h
++++ b/m3u8interceptor.h
+@@ -1,15 +1,29 @@
+ #ifndef M3U8INTERCEPTOR_H
+ #define M3U8INTERCEPTOR_H
+ 
+ #include <QWebEngineUrlRequestInterceptor>
+ #include <QObject>
++#include <QString>
++#include <QList>
++#include <QWebEngineHttpRequestHeader>
+ 
+ class M3u8Interceptor : public QWebEngineUrlRequestInterceptor
+ {
+     Q_OBJECT
+ public:
+     explicit M3u8Interceptor(QObject *parent = nullptr);
++
++    struct LicenseRequest {
++        QString url;
++        QString headers;
++        bool isValid;
++    };
++
++    LicenseRequest getLastLicenseRequest() const { return m_lastLicenseReq; }
+ 
+ protected:
+     void interceptRequest(QWebEngineUrlRequestInfo &info) override;
++
++private:
++    LicenseRequest m_lastLicenseReq;
++    QString convertHeaders(const QList<QWebEngineHttpRequestHeader> &headers) const;
+ };
+ 
+ #endif // M3U8INTERCEPTOR_H
+diff --git a/mainwindow.cpp b/mainwindow.cpp
+index 1234567..abcdefg 100644
+--- a/mainwindow.cpp
++++ b/mainwindow.cpp
+@@ -1,4 +1,5 @@
+ #include "ui_kodigui.h"
+ #include "mainwindow.h"
++#include "m3u8interceptor.h"
+ #include <QDebug>
+ #include <QProcess>
+ #include <QtNetwork>
+@@ -16,6 +17,10 @@
+ #include <QPointer>
+ #include <libssh2.h>
+ #include <libssh2_sftp.h>
++#include <QWebEngineScript>
++#include <QMessageBox>
++#include <QDateTime>
++#include <QCoreApplication>
+ 
+ // Выполняет внешнюю команду (используется для "ssh pi@... <cmd>").
+ // Определена ниже в файле; объявлена здесь, т.к. используется раньше.
+@@ -200,3 +205,85 @@ void MainWindow::sendJsonRpc(
+     }
+ }
+ 
++// ============================================================================
++// WIDEVINE INTEGRATION METHODS
++// ============================================================================
++
++void MainWindow::setupWidevineCapture()
++{
++    QString jsCode;
++    QFile file("widevine_capture.js"); // Файл должен лежать в рабочей директории или в resources
++    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
++        jsCode = file.readAll();
++        file.close();
++    } else {
++        qDebug() << "Warning: widevine_capture.js not found!";
++        return;
++    }
++
++    QWebEngineScript script;
++    script.setSourceCode(jsCode);
++    script.setInjectionPoint(QWebEngineScript::DocumentCreation);
++    script.setWorldId(QWebEngineScript::MainWorld);
++    
++    // Предполагается, что m_webView - это ваш указатель на QWebEngineView
++    // Если он называется иначе, замените m_webView на правильное имя переменной
++    if (m_webView && m_webView->page()) {
++        m_webView->page()->scripts().insert(script);
++        qDebug() << "Widevine JS capture script injected.";
++    }
++}
++
++void MainWindow::on_extractKeyButton_clicked()
++{
++    if (!m_webView || !m_webView->page()) return;
++
++    // 1. Получаем PSSH из JavaScript (localStorage)
++    m_webView->page()->runJavaScript("localStorage.getItem('wv_last_pssh');", 
++        [this](const QVariant &result) {
++            QString pssh = result.toString();
++            if (pssh.isEmpty()) {
++                QMessageBox::warning(this, "Ошибка", "PSSH не найден. Сначала воспроизведите DRM-контент на странице.");
++                return;
++            }
++
++            // 2. Получаем URL и Headers из C++ перехватчика
++            // Предполагается, что m_interceptor - это ваш указатель на M3u8Interceptor
++            if (!m_interceptor) {
++                QMessageBox::critical(this, "Ошибка", "Перехватчик не инициализирован.");
++                return;
++            }
++
++            auto licReq = m_interceptor->getLastLicenseRequest();
++            if (!licReq.isValid) {
++                QMessageBox::warning(this, "Ошибка", "Запрос лицензии не был перехвачен. Убедитесь, что контент DRM загружен.");
++                return;
++            }
++
++            // 3. Запускаем Python-скрипт
++            extractKeyWithPython(pssh, licReq.url, licReq.headers);
++        });
++}
++
++void MainWindow::extractKeyWithPython(const QString &pssh, const QString &licUrl, const QString &licHeaders)
++{
++    QProcess *pythonProcess = new QProcess(this);
++    QString appDir = QCoreApplication::applicationDirPath();
++    QString scriptPath = appDir + "/drm_tools/extract_key.py";
++    QString devicePath = appDir + "/drm_tools/device.wvd";
++
++    QStringList arguments;
++    arguments << scriptPath << pssh << licUrl << licHeaders << devicePath;
++
++    connect(pythonProcess, &QProcess::readyReadStandardOutput, this, [=]() {
++        QString output = pythonProcess->readAllStandardOutput();
++        qDebug() << "Python Output:" << output;
++
++        if (output.contains("KEY_FOUND:")) {
++            QStringList lines = output.split('\n');
++            for (const QString &line : lines) {
++                if (line.startsWith("KEY_FOUND:")) {
++                    QString keyData = line.mid(10); // Убираем "KEY_FOUND:"
++                    QMessageBox::information(this, "Успех", "Ключ получен:\n" + keyData);
++                    saveKeyToFile(keyData, pssh, licUrl);
++                }
++            }
++        } else if (output.contains("ERROR_")) {
++            QMessageBox::critical(this, "Ошибка дешифровки", output);
++        }
++    });
++
++    pythonProcess->start("python3", arguments); // Для FreeBSD используйте "python3" или "python"
++}
++
++void MainWindow::saveKeyToFile(const QString &key, const QString &pssh, const QString &licUrl)
++{
++    QString fileName = QCoreApplication::applicationDirPath() + "/widevine_keys.txt";
++    QFile file(fileName);
++    if (file.open(QIODevice::Append | QIODevice::Text)) {
++        QTextStream out(&file);
++        out << "========================================\n";
++        out << "Date: " << QDateTime::currentDateTime().toString() << "\n";
++        out << "Stream/License URL: " << licUrl << "\n";
++        out << "PSSH: " << pssh << "\n";
++        out << "KEY: " << key << "\n";
++        out << "========================================\n\n";
++        file.close();
++        qDebug() << "Key saved to:" << fileName;
++    }
++}
+diff --git a/mainwindow.h b/mainwindow.h
+index 1234567..abcdefg 100644
+--- a/mainwindow.h
++++ b/mainwindow.h
+@@ -1,4 +1,5 @@
+ #ifndef MAINWINDOW_H
+ #define MAINWINDOW_H
+ 
+ #include <QMainWindow>
++#include <QString>
++#include <QVariant>
+ 
+ QT_BEGIN_NAMESPACE
+ namespace Ui { class MainWindow; }
+@@ -10,6 +11,15 @@ class MainWindow : public QMainWindow
+     Q_OBJECT
+ 
+ public:
+     explicit MainWindow(QWidget *parent = nullptr);
+     ~MainWindow();
+ 
++    // Widevine Integration Methods
++    void setupWidevineCapture();
++    void extractKeyWithPython(const QString &pssh, const QString &licUrl, const QString &licHeaders);
++    void saveKeyToFile(const QString &key, const QString &pssh, const QString &licUrl);
++
++    // Убедитесь, что эти указатели объявлены в вашем классе (раскомментируйте или добавьте, если их нет):
++    // class QWebEngineView *m_webView;
++    // class M3u8Interceptor *m_interceptor;
++
+ private slots:
+     void on_horizontalSlider_valueChanged(int value);
++    void on_extractKeyButton_clicked(); // Добавьте эту кнопку в ваш .ui файл
+ 
+ private:
+     Ui::MainWindow *ui;
+diff --git a/widevine_capture.js b/widevine_capture.js
+new file mode 100644
+index 0000000..9f8e7d6
+--- /dev/null
++++ b/widevine_capture.js
+@@ -0,0 +1,21 @@
++(function() {
++    // Перехватываем generateRequest для получения PSSH (InitData)
++    const originalGenerateRequest = MediaKeySession.prototype.generateRequest;
++    MediaKeySession.prototype.generateRequest = function(initDataType, initData) {
++        if (initDataType === 'cenc' || initDataType === 'webm') {
++            const uint8array = new Uint8Array(initData);
++            let binary = '';
++            for (let i = 0; i < uint8array.byteLength; i++) {
++                binary += String.fromCharCode(uint8array[i]);
++            }
++            const psshBase64 = btoa(binary);
++            
++            // Сохраняем в localStorage, чтобы C++ мог это прочитать
++            localStorage.setItem('wv_last_pssh', psshBase64);
++            console.log('WIDEVINE_CAPTURE: PSSH saved to localStorage ->', psshBase64);
++            
++            window.dispatchEvent(new CustomEvent('wv_data_ready', { detail: { pssh: psshBase64 } }));
++        }
++        return originalGenerateRequest.call(this, initDataType, initData);
++    };
++})();

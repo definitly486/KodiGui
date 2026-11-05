@@ -125,4 +125,19 @@ private slots:
     // --- Общий хелпер для очистки полей ввода ---
     void clearLineEditField(class QLineEdit *edit, const QString &placeholder);
 };
+
+    // ========================================================================
+    // WIDEVINE INTEGRATION
+    // ========================================================================
+    class QWebEngineView; // Предварительное объявление
+    class M3u8Interceptor;
+
+    void setupWidevineCapture();
+    void extractKeyWithPython(const QString &pssh, const QString &licUrl, const QString &licHeaders);
+    void saveKeyToFile(const QString &key, const QString &pssh, const QString &licUrl);
+
+    // ВАЖНО: Замените m_webView на реальное имя вашего веб-вью (например, ui->webEngineView), 
+    // если вы создаете его в конструкторе.
+    QWebEngineView *m_webView;
+    M3u8Interceptor *m_interceptor;
 #endif // MAINWINDOW_H

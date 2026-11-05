@@ -1028,4 +1028,109 @@ void MainWindow::on_pushButton_18_clicked()
     process->start(program, arguments);
 }
 
+// ============================================================================
+// WIDEVINE INTEGRATION METHODS
+// ============================================================================
 
+void MainWindow::setupWidevineCapture()
+{
+    QString jsCode;
+    QFile file("widevine_capture.js"); 
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        jsCode = file.readAll();
+        file.close();
+    } else {
+        qDebug() << "Warning: widevine_capture.js not found in app dir!";
+        return;
+    }
+
+    QWebEngineScript script;
+    script.setSourceCode(jsCode);
+    script.setInjectionPoint(QWebEngineScript::DocumentCreation);
+    script.setWorldId(QWebEngineScript::MainWorld);
+    
+    // ВНИМАНИЕ: Если ваш QWebEngineView называется иначе (например, ui->webView), 
+    // замените m_webView ниже на правильное имя.
+    if (m_webView && m_webView->page()) {
+        m_webView->page()->scripts().insert(script);
+        qDebug() << "Widevine JS capture script injected.";
+    }
+}
+
+void MainWindow::on_extractKeyButton_clicked()
+{
+    if (!m_webView || !m_webView->page() || !m_interceptor) {
+        qDebug() << "Error: WebView or Interceptor not initialized!";
+        return;
+    }
+
+    m_webView->page()->runJavaScript("localStorage.getItem('wv_last_pssh');", 
+        [this](const QVariant &result) {
+            QString pssh = result.toString();
+            if (pssh.isEmpty()) {
+                qDebug() << "PSSH not found. Play DRM content first.";
+                return;
+            }
+
+            auto licReq = m_interceptor->getLastLicenseRequest();
+            if (!licReq.isValid) {
+                qDebug() << "License request not intercepted.";
+                return;
+            }
+
+            extractKeyWithPython(pssh, licReq.url, licReq.headers);
+        });
+}
+
+void MainWindow::extractKeyWithPython(const QString &pssh, const QString &licUrl, const QString &licHeaders)
+{
+    QProcess *pythonProcess = new QProcess(this);
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString scriptPath = appDir + "/drm_tools/extract_key.py";
+    QString devicePath = appDir + "/drm_tools/device.wvd";
+
+    QStringList arguments;
+    arguments << scriptPath << pssh << licUrl << licHeaders << devicePath;
+
+    connect(pythonProcess, &QProcess::readyReadStandardOutput, this, [=]() {
+        QString output = pythonProcess->readAllStandardOutput();
+        qDebug() << "Python Output:" << output;
+
+        if (output.contains("KEY_FOUND:")) {
+            QStringList lines = output.split('\n');
+            for (const QString &line : lines) {
+                if (line.startsWith("KEY_FOUND:")) {
+                    QString keyData = line.mid(10); // Убираем "KEY_FOUND:"
+                    qDebug() << "SUCCESS! Key:" << keyData;
+                    saveKeyToFile(keyData, pssh, licUrl);
+                }
+            }
+        } else if (output.contains("ERROR_")) {
+            qDebug() << "Python Error:" << output;
+        }
+    });
+
+    connect(pythonProcess, &QProcess::readyReadStandardError, this, [=]() {
+        QString error = pythonProcess->readAllStandardError();
+        if (!error.isEmpty()) qDebug() << "Python StdErr:" << error;
+    });
+
+    pythonProcess->start("python3", arguments);
+}
+
+void MainWindow::saveKeyToFile(const QString &key, const QString &pssh, const QString &licUrl)
+{
+    QString fileName = QCoreApplication::applicationDirPath() + "/widevine_keys.txt";
+    QFile file(fileName);
+    if (file.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << "========================================\n";
+        out << "Date: " << QDateTime::currentDateTime().toString() << "\n";
+        out << "Stream/License URL: " << licUrl << "\n";
+        out << "PSSH: " << pssh << "\n";
+        out << "KEY: " << key << "\n";
+        out << "========================================\n\n";
+        file.close();
+        qDebug() << "Key saved to:" << fileName;
+    }
+}
