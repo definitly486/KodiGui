@@ -904,7 +904,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
 
         QTextStream stream(&keyFile);
         const QStringList lines = stream.readAll().split(
-            QRegularExpression("[\\r\\n]+"), Qt::SkipEmptyParts);
+            QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
         keyFile.close();
 
         if (lines.size() < 2) {
