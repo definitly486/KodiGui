@@ -29,7 +29,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>1</number>
+     <number>6</number>
     </property>
     <widget class="QWidget" name="volume">
      <attribute name="title">
@@ -653,6 +653,19 @@
       </property>
       <property name="text">
        <string>Play drm.aar.ts</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="extractKeyButton">
+      <property name="geometry">
+       <rect>
+        <x>210</x>
+        <y>230</y>
+        <width>80</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>get key</string>
       </property>
      </widget>
     </widget>
