@@ -7,16 +7,16 @@
     <x>0</x>
     <y>0</y>
     <width>584</width>
-    <height>488</height>
+    <height>451</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>KodiGui</string>
   </property>
   <property name="windowIcon">
-   <iconset>
-    <normalon>:/icons/kodi.ico</normalon>
-   </iconset>
+   <iconset resource="resource.qrc">
+    <normaloff>:/kodi.ico</normaloff>
+    <normalon>:/icons/kodi.ico</normalon>:/kodi.ico</iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QTabWidget" name="tabWidget">
@@ -25,7 +25,7 @@
       <x>-10</x>
       <y>0</y>
       <width>601</width>
-      <height>461</height>
+      <height>471</height>
      </rect>
     </property>
     <property name="currentIndex">
@@ -154,8 +154,31 @@
        <string>clear url</string>
       </property>
      </widget>
+     <widget class="QPushButton" name="pushButton_info">
+      <property name="geometry">
+       <rect>
+        <x>360</x>
+        <y>100</y>
+        <width>80</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>info</string>
+      </property>
+     </widget>
+     <widget class="QTextEdit" name="textEdit_info">
+      <property name="geometry">
+       <rect>
+        <x>230</x>
+        <y>270</y>
+        <width>291</width>
+        <height>70</height>
+       </rect>
+      </property>
+     </widget>
     </widget>
-    <widget class="QWidget" name="player">
+    <widget class="QWidget" name="widget">
      <attribute name="title">
       <string>Player</string>
      </attribute>
@@ -235,6 +258,32 @@
       </property>
       <property name="text">
        <string>Close popup dialog</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="playdrm_17">
+      <property name="geometry">
+       <rect>
+        <x>330</x>
+        <y>100</y>
+        <width>101</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Play drm.mp4</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="stopdrm_18">
+      <property name="geometry">
+       <rect>
+        <x>450</x>
+        <y>100</y>
+        <width>101</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Stop drm.mp4</string>
       </property>
      </widget>
     </widget>
@@ -388,6 +437,253 @@
       </property>
      </widget>
     </widget>
+    <widget class="QWidget" name="MatchTV">
+     <attribute name="title">
+      <string>Матч ТВ</string>
+     </attribute>
+     <widget class="QPushButton" name="pushButton_15">
+      <property name="geometry">
+       <rect>
+        <x>50</x>
+        <y>70</y>
+        <width>101</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Получить URL</string>
+      </property>
+     </widget>
+     <widget class="QLineEdit" name="lineEdit_4">
+      <property name="geometry">
+       <rect>
+        <x>50</x>
+        <y>40</y>
+        <width>221</width>
+        <height>23</height>
+       </rect>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_16">
+      <property name="geometry">
+       <rect>
+        <x>170</x>
+        <y>70</y>
+        <width>91</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Play</string>
+      </property>
+     </widget>
+     <widget class="QTextBrowser" name="textBrowseronairnow">
+      <property name="geometry">
+       <rect>
+        <x>300</x>
+        <y>10</y>
+        <width>281</width>
+        <height>221</height>
+       </rect>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="getonairnow">
+      <property name="geometry">
+       <rect>
+        <x>300</x>
+        <y>250</y>
+        <width>201</width>
+        <height>22</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Получить что сейчас в эфире</string>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="drm">
+     <attribute name="title">
+      <string>DRM</string>
+     </attribute>
+     <widget class="QLineEdit" name="lineEdit_drm">
+      <property name="geometry">
+       <rect>
+        <x>60</x>
+        <y>50</y>
+        <width>113</width>
+        <height>23</height>
+       </rect>
+      </property>
+     </widget>
+     <widget class="QLineEdit" name="lineEdit_drm_key">
+      <property name="geometry">
+       <rect>
+        <x>290</x>
+        <y>50</y>
+        <width>113</width>
+        <height>23</height>
+       </rect>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_8">
+      <property name="geometry">
+       <rect>
+        <x>60</x>
+        <y>30</y>
+        <width>57</width>
+        <height>15</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>drm url</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_9">
+      <property name="geometry">
+       <rect>
+        <x>290</x>
+        <y>30</y>
+        <width>57</width>
+        <height>15</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>drm key</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_rundrm">
+      <property name="geometry">
+       <rect>
+        <x>60</x>
+        <y>140</y>
+        <width>80</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>run</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_killstreamlink">
+      <property name="geometry">
+       <rect>
+        <x>330</x>
+        <y>140</y>
+        <width>161</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Kill streamlink</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_cleardrm">
+      <property name="geometry">
+       <rect>
+        <x>500</x>
+        <y>140</y>
+        <width>80</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>clear</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_playdrmts">
+      <property name="geometry">
+       <rect>
+        <x>170</x>
+        <y>140</y>
+        <width>80</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Play drm.ts</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_kill_m3u8DL">
+      <property name="geometry">
+       <rect>
+        <x>330</x>
+        <y>170</y>
+        <width>161</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Kill N_m3u8DL-RE</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_17">
+      <property name="geometry">
+       <rect>
+        <x>60</x>
+        <y>230</y>
+        <width>80</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>close</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_10">
+      <property name="geometry">
+       <rect>
+        <x>60</x>
+        <y>210</y>
+        <width>131</width>
+        <height>16</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Close popup dialog</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_playdrmaarts">
+      <property name="geometry">
+       <rect>
+        <x>170</x>
+        <y>170</y>
+        <width>121</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Play drm.aar.ts</string>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="tab_2">
+     <attribute name="title">
+      <string>Monitor</string>
+     </attribute>
+     <widget class="QTextEdit" name="textEdit">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>561</width>
+        <height>271</height>
+       </rect>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_18">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>83</width>
+        <height>22</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>top</string>
+      </property>
+     </widget>
+    </widget>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -402,6 +698,8 @@
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
- <resources/>
+ <resources>
+  <include location="resource.qrc"/>
+ </resources>
  <connections/>
 </ui>

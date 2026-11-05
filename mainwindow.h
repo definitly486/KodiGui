@@ -2,6 +2,14 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QProcess>
+#include <QString>
+#include <QNetworkAccessManager>  // <-- обязательно для QNetworkAccessManager
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QJsonObject>
+#include <QJsonValue>
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -21,6 +29,8 @@ private slots:
     void on_horizontalSlider_valueChanged(int value);
 
     QString on_lineEdit_textChanged();
+
+    void on_pushButton_info_clicked();
 
     void on_pushButton_clicked();
 
@@ -43,8 +53,7 @@ private slots:
     void on_pushButton_8_clicked();
 
      QString  on_lineEdit_3_textChanged();
-
-
+    void on_getonairnow_clicked();  // <-- добавьте эту строку
 
      void on_pushButton_10_clicked();
 
@@ -58,9 +67,62 @@ private slots:
 
      void on_pushButton_clearurl_clicked();
 
+     void on_pushButton_15_clicked();
+
+     void on_pushButton_16_clicked();
+
+     void on_playdrm_17_clicked();
+
+     void on_stopdrm_18_clicked();
+
+     void on_pushButton_rundrm_clicked();
+
+      QString  on_lineEdit_drm_textChanged();
+
+       QString  on_lineEdit_drm_key_textChanged();
 
 
- private:
-    Ui::MainWindow *ui;
+
+
+
+       void on_pushButton_killstreamlink_clicked();
+
+       void on_pushButton_cleardrm_clicked();
+
+       void on_pushButton_playdrmts_clicked();
+
+       void on_pushButton_kill_m3u8DL_clicked();
+
+       void on_pushButton_17_clicked();
+
+       void on_pushButton_playdrmaarts_clicked();
+
+       void on_pushButton_18_clicked();
+
+   private:
+ Ui::MainWindow *ui;
+ QProcess *pythonProcess;        // ← вот это
+   QNetworkAccessManager *manager;
+    int rpcId = 1;
+
+    void sendJsonRpc(
+        const QJsonObject &json,
+        const QString &desc,
+        std::function<void(const QJsonObject&)> onSuccess = nullptr
+    );
+
+    // --- Общие хелперы для Kodi JSON-RPC (убирают дублирование boilerplate'а) ---
+    void postPlayerOpenFile(const QString &file);
+    void postPlayerOpenChannel(int channelId);
+    void postPlayerStop();
+    void postSetVolume(int volume);
+    void postInputAction(const QString &action);
+    void postSetAddonEnabled(const QString &addonId, const QJsonValue &enabledValue);
+
+    // --- Общий хелпер для SSH-команд (killall на Raspberry Pi) ---
+    void sshKillProcess(const QString &processName);
+
+    // --- Общий хелпер для очистки полей ввода ---
+    void clearLineEditField(class QLineEdit *edit, const QString &placeholder);
 };
 #endif // MAINWINDOW_H
