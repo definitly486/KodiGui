@@ -173,7 +173,7 @@ void MainWindow::postSetAddonEnabled(const QString &addonId, const QJsonValue &e
 // ---------------------------------------------------------------------
 void MainWindow::sshKillProcess(const QString &processName)
 {
-    runCommand("ssh", {"pi@192.168.8.45", "killall -9 " + processName});
+    runCommand("ssh", {"pi@192.168.8.45", "killall -9 " + processName + " || true"});
 }
 
 // ---------------------------------------------------------------------
@@ -517,54 +517,45 @@ void MainWindow::on_pushButton_9_clicked()
 
 
 void runCommand(const QString &command, const QStringList &args) {
-    QProcess process;
-    process.start(command, args);
-    process.waitForFinished(-1);
-    qDebug() << "Команда:" << command << args;
-    qDebug() << "Вывод:" << process.readAllStandardOutput();
-    qDebug() << "Ошибки:" << process.readAllStandardError();
+    // Неблокирующий запуск: UI не замирает
+    const bool ok = QProcess::startDetached(command, args);
+    if (!ok) {
+        qWarning() << "Не удалось запустить:" << command << args;
+    } else {
+        qDebug() << "Команда запущена (detached):" << command << args;
+    }
 }
 
 
 void MainWindow::on_pushButton_8_clicked()
 {
-    QString sshPrefix = "ssh";
-    QString user = "pi@192.168.8.45";
+    const QString user = "pi@192.168.8.45";
+    const QString input = on_lineEdit_3_textChanged().trimmed();
 
-    // Последовательное выполнение команд с задержками
-    auto executeSequence = [&]() {
-        // 1. sudo systemctl start youtubeUnblock
-        runCommand(sshPrefix, {user, "sudo systemctl start youtubeUnblock"});
+    if (input.isEmpty()) {
+        qWarning() << "YouTube: URL пустой";
+        return;
+    }
 
-        // 2. rm yt.mp4
-        runCommand(sshPrefix, {user, "rm yt.mp4"});
+    // Последовательность без блокировки UI
+    runCommand("ssh", {user, "sudo systemctl start youtubeUnblock"});
+    runCommand("ssh", {user, "rm -f yt.mp4"});
+    runCommand("ssh", {user, "killall -9 yt-dlp || true"});
+    runCommand("ssh", {user, "killall -9 ffmpeg || true"});
+    runCommand("ssh", {user, "sudo systemctl restart youtubeUnblock"});
 
-        // 3. killall -9 yt-dlp
-        runCommand(sshPrefix, {user, "killall -9 yt-dlp"});
+    const QString remoteCmd = QString(
+        "nohup $HOME/.local/bin/yt-dlp -f 269+234 %1 --no-part -o yt.mp4 "
+        "> /dev/null 2>&1 &"
+    ).arg(input);
 
-        // 4. killall -9 ffmpeg
-        runCommand(sshPrefix, {user, "killall -9 ffmpeg"});
+    runCommand("ssh", {user, remoteCmd});
 
-        // 5. sudo systemctl restart youtubeUnblock
-        runCommand(sshPrefix, {user, "sudo systemctl restart youtubeUnblock"});
-
-        // 6. ./yt.sh $URL &
-        QString url = "your_video_url"; // замените на ваш URL
-        QString input = on_lineEdit_3_textChanged();
-       runCommand(sshPrefix, {user, "$HOME/.local/bin/yt-dlp  -f 269+234 " + input + " --no-part   -o yt.mp4 " " > /dev/null 2>&1 &"});
-        // 7. sleep 50
-        QTimer::singleShot(50000, this, [this]() {
-            qDebug() << "Прошло 50 секунд.";
-            postPlayerOpenFile("yt.mp4");
-        });
-
-
-
-    };
-
-    // Запуск последовательности
-    executeSequence();
-
+    // Через 50 сек открываем файл в Kodi
+    QTimer::singleShot(50000, this, [this]() {
+        qDebug() << "Прошло 50 секунд, открываем yt.mp4";
+        postPlayerOpenFile("yt.mp4");
+    });
 }
 
 
@@ -893,43 +884,33 @@ void MainWindow::on_stopdrm_18_clicked()
 
 void MainWindow::on_pushButton_rundrm_clicked()
 {
+    const QString user = "pi@192.168.8.45";
+    const QString input  = on_lineEdit_drm_textChanged().trimmed();
+    const QString keydrm = on_lineEdit_drm_key_textChanged().trimmed();
 
-    QString sshPrefix = "ssh";
-    QString user = "pi@192.168.8.45";
+    if (input.isEmpty() || keydrm.isEmpty()) {
+        qWarning() << "DRM: URL или key пустые";
+        return;
+    }
 
-    // Последовательное выполнение команд с задержками
-    auto executeSequence = [&]() {
+    // 1. Убиваем старый процесс
+    sshKillProcess("N_m3u8DL-RE");
 
-         //3 
-         sshKillProcess("N_m3u8DL-RE");
-        //4 
-        runCommand(sshPrefix, {user, "rm -R $HOME/drm.ts"});
-        //5
+    // 2. Чистим старые файлы (одна SSH-команда вместо двух)
+    runCommand("ssh", {user, "rm -rf $HOME/drm.ts $HOME/drm"});
 
-         runCommand(sshPrefix, {user, "rm -R $HOME/drm"});
-        
-        // 6. N_m3u8DL-RE
-        QString input = on_lineEdit_drm_textChanged();
-        QString keydrm = on_lineEdit_drm_key_textChanged();
+    // 3. Запускаем N_m3u8DL-RE в фоне на Pi
+    //    nohup + redirect + & — SSH сразу возвращает управление
+    const QString remoteCmd = QString(
+        "nohup N_m3u8DL-RE %1 -M format=mp4 --key %2 -sv worst "
+        "--save-name drm --save-dir $HOME --live-pipe-mux "
+        "--select-audio id='audio_aar=128000' "
+        "> /dev/null 2>&1 &"
+    ).arg(input, keydrm);
 
-        // N_m3u8DL-RE $1 -M format=mp4 --key  $2 -sv worst    --save-name "drm" --save-dir  $HOME  --live-pipe-mux   --select-audio id="audio_aar=128000"
-        runCommand(sshPrefix, {user, "N_m3u8DL-RE "+input+" -M format=mp4 --key  "+keydrm+" -sv worst    --save-name drm --save-dir  $HOME  --live-pipe-mux   --select-audio id='audio_aar=128000' " " > /dev/null 2>&1 &"});
-        // 7. sleep 50
-        QTimer::singleShot(50000, []() {
-            qDebug() << "Прошло 50 секунд.";
-            // Можно добавить дальнейшие действия после ожидания
+    runCommand("ssh", {user, remoteCmd});
 
-
-        });
-
-
-
-    };
-
-    // Запуск последовательности
-    executeSequence();
-
-
+    qDebug() << "DRM: N_m3u8DL-RE запущен в фоне";
 }
 
 
