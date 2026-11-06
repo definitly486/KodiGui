@@ -116,7 +116,8 @@ private slots:
         std::function<void(const QJsonObject&)> onSuccess = nullptr
     );
 
-
+   class PlayerWindow *m_playerWindow = nullptr; // Указатель на окно плеера
+    
 
 
     // --- Общие хелперы для Kodi JSON-RPC (убирают дублирование boilerplate'а) ---

@@ -635,7 +635,18 @@ QUrl url("https://matchtv.ru/on-air");
 
     // Создаём и показываем встроенный плеер
     PlayerWindow *player = new PlayerWindow(url, this);
-    player->setAttribute(Qt::WA_DeleteOnClose); // автоудаление при закрытии
+    // Было что-то вроде:
+// PlayerWindow *player = new PlayerWindow(url, this);
+
+// Стало:
+m_playerWindow = new PlayerWindow(url, this);
+m_playerWindow->setAttribute(Qt::WA_DeleteOnClose);
+m_playerWindow->show();
+
+// ВАЖНО: Очистите указатель, когда окно закроется
+connect(m_playerWindow, &QObject::destroyed, this, [this]() {
+    m_playerWindow = nullptr;
+});
     player->show();
     connect(player, &PlayerWindow::urlCaptured,
             this, [&](const QUrl& capturedUrl){
@@ -1051,14 +1062,10 @@ void MainWindow::on_pushButton_18_clicked()
 
 void MainWindow::on_extractKeyButton_clicked()
 {
-    // Ищем среди ВСЕХ виджетов приложения (это надежнее, чем только topLevelWidgets)
-    for (QWidget *widget : QApplication::allWidgets()) {
-        if (PlayerWindow *pw = qobject_cast<PlayerWindow *>(widget)) {
-            qDebug() << "PlayerWindow найден! Запускаем извлечение ключа...";
-            pw->extractCurrentKey();
-            return;
-        }
+    if (m_playerWindow) {
+        qDebug() << "PlayerWindow найден! Запускаем извлечение ключа...";
+        m_playerWindow->extractCurrentKey();
+    } else {
+        qDebug() << "PlayerWindow не найден! Сначала откройте видео/плеер.";
     }
-    
-    qDebug() << "PlayerWindow не найден! Сначала откройте видео/плеер, а затем нажмите эту кнопку.";
 }
