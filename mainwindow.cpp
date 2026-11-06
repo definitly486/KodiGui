@@ -630,32 +630,30 @@ void MainWindow::on_pushButton_clearurl_clicked()
 //получение урл для матч тв
 void MainWindow::on_pushButton_15_clicked()
 {
+    QUrl url("https://matchtv.ru/on-air");
 
-QUrl url("https://matchtv.ru/on-air");
+    if (m_playerWindow) {
+        m_playerWindow->close();
+        m_playerWindow = nullptr;
+    }
 
-    // Создаём и показываем встроенный плеер
-    PlayerWindow *player = new PlayerWindow(url, this);
-    // Было что-то вроде:
-// PlayerWindow *player = new PlayerWindow(url, this);
+    m_playerWindow = new PlayerWindow(url, this);
+    m_playerWindow->setAttribute(Qt::WA_DeleteOnClose);
+    m_playerWindow->show();
 
-// Стало:
-m_playerWindow = new PlayerWindow(url, this);
-m_playerWindow->setAttribute(Qt::WA_DeleteOnClose);
-m_playerWindow->show();
+    connect(m_playerWindow, &QObject::destroyed, this, [this]() {
+        m_playerWindow = nullptr;
+    });
 
-// ВАЖНО: Очистите указатель, когда окно закроется
-connect(m_playerWindow, &QObject::destroyed, this, [this]() {
-    m_playerWindow = nullptr;
-});
-    player->show();
-    connect(player, &PlayerWindow::urlCaptured,
-            this, [&](const QUrl& capturedUrl){
-                ui->lineEdit_4->setText(capturedUrl.toString()); // Обращаемся через указатель
+    connect(m_playerWindow, &PlayerWindow::urlCaptured,
+            this, [this](const QString &capturedUrl) {
+                ui->lineEdit_4->setText(capturedUrl);
             });
+
     qDebug() << "Открыт встроенный плеер:" << url.toString();
-
-
 }
+
+
 void MainWindow::on_pushButton_16_clicked()
 {
     QString input = ui->lineEdit_4->text();

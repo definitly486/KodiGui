@@ -1,4 +1,4 @@
-// playerwindow.cpp — АБСОЛЮТНО ФИНАЛЬНАЯ ВЕРСИЯ (FreeBSD + Qt6, декабрь 2025)
+// playerwindow.cpp — Widevine-ready (FreeBSD + Qt6)
 #include "playerwindow.h"
 #include "ui_playerwindow.h"
 #include "m3u8interceptor.h"
@@ -10,18 +10,13 @@
 #include <QTextStream>
 #include <QDateTime>
 #include <QCoreApplication>
+#include <QDir>
 #include <QMessageBox>
-#include "m3u8interceptor.h"
 #include <QWebEngineView>
-#include <QWebEnginePage>                 // ← теперь используем стандартный page
-#include <QWebEngineProfile>
-#include <QWebEngineScript>
-#include <QWebEngineScriptCollection>
+#include <QWebEnginePage>
 #include <QWebEngineSettings>
 #include <QWebEngineFullScreenRequest>
-#include <QFile>
 #include <QTimer>
-#include <QProcess>
 #include <QStandardPaths>
 #include <QDebug>
 
@@ -38,28 +33,17 @@ PlayerWindow::PlayerWindow(const QUrl &url, QWidget *parent)
 
     webView = new QWebEngineView(this);
 
-    // ... ваш существующий код, где создается webView ...
-    webView = new QWebEngineView(this);
-    
-    // === ИНИЦИАЛИЗАЦИЯ WIDEVINE ===
-    m_interceptor = new M3u8Interceptor(this);
-    if (webView && webView->page()) {
-        webView->page()->profile()->setUrlRequestInterceptor(m_interceptor);
-    }
-    setupWidevineCapture();
-    // ==============================
+    // Один профиль + одна страница. Inject и interceptor — только после setPage.
     QWebEngineProfile *profile = new QWebEngineProfile("LiveTVProfile", this);
-    QWebEnginePage *page = new QWebEnginePage(profile, this);  // ← обычный QWebEnginePage
-
     profile->setHttpUserAgent(
         "Mozilla/5.0 (X11; FreeBSD amd64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/129.0 Safari/537.36"
     );
 
+    QWebEnginePage *page = new QWebEnginePage(profile, this);
     webView->setPage(page);
     setCentralWidget(webView);
 
-    // Настройки
     auto *settings = page->settings();
     settings->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
     settings->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
@@ -67,38 +51,34 @@ PlayerWindow::PlayerWindow(const QUrl &url, QWidget *parent)
     settings->setAttribute(QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);
     settings->setAttribute(QWebEngineSettings::AllowRunningInsecureContent, true);
 
-    // StreamDetector (для красивых логов)
+    // Один interceptor на активный профиль — его же читает extractCurrentKey()
+    m_interceptor = new M3u8Interceptor(this);
+    profile->setUrlRequestInterceptor(m_interceptor);
+
+    connect(m_interceptor, &M3u8Interceptor::streamFound, this, [this](const QString &streamUrl) {
+        if (m_mpvLaunched || !streamUrl.contains(".m3u8"))
+            return;
+        m_mpvLaunched = true;
+        emit urlCaptured(streamUrl);
+    });
+
+    // Widevine JS — ПОСЛЕ setPage, в тот же profile
+    setupWidevineCapture();
+
+    // StreamDetector (опционально, из ресурсов)
     QFile scriptFile(":/stream-detector.js");
     if (scriptFile.open(QIODevice::ReadOnly)) {
-        QString jsCode = scriptFile.readAll();
-        scriptFile.close();
-
         QWebEngineScript script;
         script.setName("StreamDetector");
-        script.setSourceCode(jsCode);
+        script.setSourceCode(scriptFile.readAll());
         script.setInjectionPoint(QWebEngineScript::DocumentCreation);
         script.setRunsOnSubFrames(true);
         script.setWorldId(QWebEngineScript::MainWorld);
-
         profile->scripts()->insert(script);
         qDebug() << "StreamDetector внедрён";
+        scriptFile.close();
     }
 
-    // === NETWORK INTERCEPTOR — ловит любой m3u8 на livetv869.me ===
-    M3u8Interceptor *interceptor = new M3u8Interceptor(this);
-    profile->setUrlRequestInterceptor(interceptor);
-
-    connect(interceptor, &M3u8Interceptor::streamFound, this, [this](const QString &url) {
-        if (m_mpvLaunched || !url.contains(".m3u8")) return;
-        m_mpvLaunched = true;
-
-          // Отправляем сигнал с захваченным URL
-        emit urlCaptured(url); // посылаем URL назад в MainWindow
-
-      
-    });
-
-    // Полноэкранный режим
     connect(page, &QWebEnginePage::fullScreenRequested, this, [this](QWebEngineFullScreenRequest r) {
         r.accept();
         r.toggleOn() ? showFullScreen() : showNormal();
@@ -112,15 +92,16 @@ PlayerWindow::PlayerWindow(const QUrl &url, QWidget *parent)
         qDebug() << "Загружаем:" << url.toString();
         webView->load(url);
     }
-setAttribute(Qt::WA_DontShowOnScreen);
-hide();
-
+    // Окно должно быть видимым — не ставить WA_DontShowOnScreen / hide()
 }
 
 PlayerWindow::~PlayerWindow()
 {
-    webView->close();
-    webView->deleteLater();
+    if (webView) {
+        webView->close();
+        webView->deleteLater();
+        webView = nullptr;
+    }
     delete ui;
 }
 
@@ -130,32 +111,46 @@ PlayerWindow::~PlayerWindow()
 
 void PlayerWindow::setupWidevineCapture()
 {
-    QString jsCode;
-    QFile file("widevine_capture.js"); 
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        jsCode = file.readAll();
-        file.close();
-    } else {
-        qDebug() << "Warning: widevine_capture.js not found in app dir!";
+    // Ищем widevine_capture.js рядом с бинарником и в cwd
+    const QStringList candidates = {
+        QCoreApplication::applicationDirPath() + "/widevine_capture.js",
+        QDir::currentPath() + "/widevine_capture.js",
+        QStringLiteral("widevine_capture.js")
+    };
+
+    QFile file;
+    bool opened = false;
+    for (const QString &path : candidates) {
+        file.setFileName(path);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            opened = true;
+            qDebug() << "widevine_capture.js loaded from:" << path;
+            break;
+        }
+    }
+    if (!opened) {
+        qDebug() << "Warning: widevine_capture.js not found! Tried:" << candidates;
         return;
     }
 
+    const QString jsCode = QString::fromUtf8(file.readAll());
+    file.close();
+
     QWebEngineScript script;
+    script.setName(QStringLiteral("WidevineCapture"));
     script.setSourceCode(jsCode);
     script.setInjectionPoint(QWebEngineScript::DocumentCreation);
+    script.setRunsOnSubFrames(true);
     script.setWorldId(QWebEngineScript::MainWorld);
-    
-    if (webView && webView->page()) {
-        webView->page()->scripts().insert(script);
-        qDebug() << "Widevine JS capture script injected into PlayerWindow.";
+
+    if (webView && webView->page() && webView->page()->profile()) {
+        webView->page()->profile()->scripts()->insert(script);
+        qDebug() << "Widevine JS capture script injected into profile.";
+    } else {
+        qDebug() << "Error: cannot inject Widevine script — no page/profile";
     }
 }
 
-// Вызовите эту функцию из вашей кнопки "Извлечь ключ" в PlayerWindow
-// (Если кнопка в MainWindow, вам нужно будет передать сигнал в PlayerWindow)
-
-
-// УБЕРИТЕ "on_" и "_clicked", так как это не слот кнопки внутри PlayerWindow, а метод, вызываемый извне
 void PlayerWindow::extractCurrentKey()
 {
     if (!webView || !webView->page() || !m_interceptor) {
@@ -163,7 +158,7 @@ void PlayerWindow::extractCurrentKey()
         return;
     }
 
-    webView->page()->runJavaScript("localStorage.getItem('wv_last_pssh');", 
+    webView->page()->runJavaScript("localStorage.getItem('wv_last_pssh');",
         [this](const QVariant &result) {
             QString pssh = result.toString();
             if (pssh.isEmpty()) {
@@ -180,7 +175,6 @@ void PlayerWindow::extractCurrentKey()
             extractKeyWithPython(pssh, licReq.url, licReq.headers);
         });
 }
-
 
 void PlayerWindow::extractKeyWithPython(const QString &pssh, const QString &licUrl, const QString &licHeaders)
 {
@@ -200,7 +194,7 @@ void PlayerWindow::extractKeyWithPython(const QString &pssh, const QString &licU
             QStringList lines = output.split('\n');
             for (const QString &line : lines) {
                 if (line.startsWith("KEY_FOUND:")) {
-                    QString keyData = line.mid(10); 
+                    QString keyData = line.mid(10);
                     qDebug() << "SUCCESS! Key:" << keyData;
                     saveKeyToFile(keyData, pssh, licUrl);
                     QMessageBox::information(this, "Успех", "Ключ получен:\n" + keyData);
@@ -214,7 +208,8 @@ void PlayerWindow::extractKeyWithPython(const QString &pssh, const QString &licU
 
     connect(pythonProcess, &QProcess::readyReadStandardError, this, [=]() {
         QString error = pythonProcess->readAllStandardError();
-        if (!error.isEmpty()) qDebug() << "Python StdErr:" << error;
+        if (!error.isEmpty())
+            qDebug() << "Python StdErr:" << error;
     });
 
     pythonProcess->start("python3", arguments);
