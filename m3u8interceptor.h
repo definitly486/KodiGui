@@ -5,8 +5,8 @@
 #include <QWebEngineUrlRequestInterceptor>
 #include <QWebEngineUrlRequestInfo>
 #include <QString>
-#include <QList>
-#include <QWebEngineHttpRequestHeader>
+#include <QHash>
+#include <QByteArray>
 
 class M3u8Interceptor : public QWebEngineUrlRequestInterceptor
 {
@@ -32,7 +32,7 @@ signals:
 
 private:
     LicenseRequest m_lastLicenseReq;
-    QString convertHeaders(const QList<QWebEngineHttpRequestHeader> &headers) const;
+    QString convertHeaders(const QHash<QByteArray, QByteArray> &headers) const;
 };
 
 #endif // M3U8INTERCEPTOR_H

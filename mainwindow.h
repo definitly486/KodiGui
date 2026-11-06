@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
-
+   #include <QWebEngineView>
+   #include "m3u8interceptor.h"
 #include <QMainWindow>
 #include <QProcess>
 #include <QString>
@@ -29,6 +30,10 @@ private slots:
     void on_horizontalSlider_valueChanged(int value);
 
     QString on_lineEdit_textChanged();
+
+
+
+    void on_extractKeyButton_clicked();
 
     void on_pushButton_info_clicked();
 
@@ -111,6 +116,9 @@ private slots:
         std::function<void(const QJsonObject&)> onSuccess = nullptr
     );
 
+
+
+
     // --- Общие хелперы для Kodi JSON-RPC (убирают дублирование boilerplate'а) ---
     void postPlayerOpenFile(const QString &file);
     void postPlayerOpenChannel(int channelId);
@@ -136,8 +144,5 @@ private slots:
     void extractKeyWithPython(const QString &pssh, const QString &licUrl, const QString &licHeaders);
     void saveKeyToFile(const QString &key, const QString &pssh, const QString &licUrl);
 
-    // ВАЖНО: Замените m_webView на реальное имя вашего веб-вью (например, ui->webEngineView), 
-    // если вы создаете его в конструкторе.
-    QWebEngineView *m_webView;
-    M3u8Interceptor *m_interceptor;
+    
 #endif // MAINWINDOW_H
