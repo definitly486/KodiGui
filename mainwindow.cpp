@@ -40,17 +40,71 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
     , pythonProcess(new QProcess(this))        // ← обязательно this!
     , manager(new QNetworkAccessManager(this))  // <-- создаём здесь!
+    , kodidlpProcess(new QProcess(this))
 {
     ui->setupUi(this);
+
+    const QString buildDate = QStringLiteral(__DATE__);
+    const QString buildTime = QStringLiteral(__TIME__);
+    ui->buildInfoText->setHtml(
+        QStringLiteral("<h2>KodiGui</h2>"
+                       "<p><b>Дата сборки:</b> %1</p>"
+                       "<p><b>Время сборки:</b> %2</p>"
+                       "<p><b>Qt:</b> %3</p>"
+                       "<p><b>Компилятор:</b> %4</p>")
+            .arg(buildDate.toHtmlEscaped(), buildTime.toHtmlEscaped(),
+                 QString::fromLatin1(qVersion()).toHtmlEscaped(),
+#if defined(__clang__)
+                 QStringLiteral("Clang ") + QStringLiteral(__clang_version__)
+#elif defined(__GNUC__)
+                 QStringLiteral("GCC ") + QStringLiteral(__VERSION__)
+#elif defined(_MSC_VER)
+                 QStringLiteral("MSVC %1").arg(_MSC_VER)
+#else
+                 QStringLiteral("Unknown")
+#endif
+                 ));
+
+    connect(kodidlpProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        const QString output = QString::fromLocal8Bit(kodidlpProcess->readAllStandardOutput());
+        if (!output.isEmpty())
+            ui->textEdit_info->moveCursor(QTextCursor::End), ui->textEdit_info->insertPlainText(output);
+    });
+    connect(kodidlpProcess, &QProcess::readyReadStandardError, this, [this]() {
+        const QString output = QString::fromLocal8Bit(kodidlpProcess->readAllStandardError());
+        if (!output.isEmpty())
+            ui->textEdit_info->moveCursor(QTextCursor::End), ui->textEdit_info->insertPlainText(output);
+    });
+    connect(kodidlpProcess,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+        ui->pushButton->setEnabled(true);
+        ui->pushButton->setText(QStringLiteral("run"));
+        ui->textEdit_info->append(
+            exitStatus == QProcess::NormalExit && exitCode == 0
+                ? QStringLiteral("\\n[kodidlp завершился успешно]")
+                : QStringLiteral("\\n[kodidlp завершился с ошибкой: %1]").arg(exitCode));
+    });
+    connect(kodidlpProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            ui->pushButton->setEnabled(true);
+            ui->pushButton->setText(QStringLiteral("run"));
+            ui->textEdit_info->append(
+                QStringLiteral("[Не удалось запустить kodidlp: %1]")
+                    .arg(kodidlpProcess->errorString()));
+        }
+    });
 }
 
 MainWindow::~MainWindow()
 {
-if (pythonProcess->state() != QProcess::NotRunning) {
+    if (kodidlpProcess->state() != QProcess::NotRunning)
+        kodidlpProcess->kill();
+
+    if (pythonProcess->state() != QProcess::NotRunning) {
         pythonProcess->terminate();
-        if (!pythonProcess->waitForFinished(1000)) {
-            pythonProcess->kill();                 // если не хочет по-хорошему
-        }
+        if (!pythonProcess->waitForFinished(1000))
+            pythonProcess->kill();
     }
     delete ui;
 }
@@ -254,22 +308,21 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
 
 void MainWindow::on_pushButton_clicked()
 {
-    QString input = on_lineEdit_textChanged();
+    const QString input = on_lineEdit_textChanged().trimmed();
+    if (input.isEmpty()) {
+        ui->textEdit_info->append(QStringLiteral("[Введите URL для kodidlp]"));
+        return;
+    }
 
-    qDebug() << input;
+    if (kodidlpProcess->state() != QProcess::NotRunning)
+        return;
 
-    QProcess process;
-    QStringList arguments;
-    arguments << input;
+    ui->textEdit_info->clear();
+    ui->textEdit_info->append(QStringLiteral("[Запуск kodidlp...]"));
+    ui->pushButton->setEnabled(false);
+    ui->pushButton->setText(QStringLiteral("Выполняется..."));
 
-    QStringList anotherList = {input};
-
-    QString program = "kodidlp";
-    process.setProgram(program);
-    process.setArguments(anotherList);
-
-    process.start();
-    process.waitForFinished();
+    kodidlpProcess->start(QStringLiteral("kodidlp"), QStringList{input});
 }
 
 void MainWindow::on_pushButton_info_clicked()
