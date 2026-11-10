@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QFile>
 #include <QTextStream>
+#include <QTextCursor>
 #include <QDir>
 #include <QTimer>
 #include <QLineEdit>
@@ -68,7 +69,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(kodidlpProcess, &QProcess::readyReadStandardOutput, this, [this]() {
         const QString output = QString::fromLocal8Bit(kodidlpProcess->readAllStandardOutput());
         if (!output.isEmpty())
-            ui->textEdit_info->moveCursor(QTextCursor::End), ui->textEdit_info->insertPlainText(output);
+            {
+            ui->textEdit_info->moveCursor(QTextCursor::End);
+            ui->textEdit_info->insertPlainText(output);
+        }
     });
     connect(kodidlpProcess, &QProcess::readyReadStandardError, this, [this]() {
         const QString output = QString::fromLocal8Bit(kodidlpProcess->readAllStandardError());
@@ -82,8 +86,8 @@ MainWindow::MainWindow(QWidget *parent)
         ui->pushButton->setText(QStringLiteral("run"));
         ui->textEdit_info->append(
             exitStatus == QProcess::NormalExit && exitCode == 0
-                ? QStringLiteral("\\n[kodidlp завершился успешно]")
-                : QStringLiteral("\\n[kodidlp завершился с ошибкой: %1]").arg(exitCode));
+                ? QStringLiteral("\n[kodidlp завершился успешно]")
+                : QStringLiteral("\n[kodidlp завершился с ошибкой: %1]").arg(exitCode));
     });
     connect(kodidlpProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
