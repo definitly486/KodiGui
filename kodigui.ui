@@ -684,6 +684,24 @@
       </property>
      </widget>
     </widget>
+    <widget class="QWidget" name="info">
+     <attribute name="title">
+      <string>Info</string>
+     </attribute>
+     <widget class="QTextBrowser" name="buildInfoText">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>20</y>
+        <width>541</width>
+        <height>300</height>
+       </rect>
+      </property>
+      <property name="openExternalLinks">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
