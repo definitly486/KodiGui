@@ -172,13 +172,56 @@ void MainWindow::postPlayerOpenFile(const QString &file)
 
 void MainWindow::postPlayerOpenChannel(int channelId)
 {
-    QJsonObject obj;
-    obj["jsonrpc"] = "2.0";
-    obj["id"] = rpcId++;
-    obj["method"] = "Player.Open";
-    obj["params"] = QJsonObject{{"item", QJsonObject{{"channelid", channelId}}}};
+    // Kodi может аварийно завершиться, если открыть PVR-канал при
+    // выключенном IPTV Simple Client. Сначала проверяем состояние аддона.
+    QJsonObject check;
+    check["jsonrpc"] = "2.0";
+    check["id"] = rpcId++;
+    check["method"] = "Addons.GetAddonDetails";
+    check["params"] = QJsonObject{
+        {"addonid", "pvr.iptvsimple"},
+        {"properties", QJsonArray{"name", "enabled", "version"}}
+    };
 
-    sendJsonRpc(obj, QString("Player.Open channelid=%1").arg(channelId));
+    sendJsonRpc(check, "Check IPTV Simple Client",
+                [this, channelId](const QJsonObject &response) {
+        if (response.contains("error")) {
+            const QString details =
+                response["error"].toObject()["message"].toString();
+            QMessageBox::warning(
+                this,
+                QStringLiteral("IPTV Simple Client"),
+                QStringLiteral("Не удалось проверить IPTV Simple Client на Kodi.%1\n\n"
+                               "Воспроизведение канала отменено.")
+                    .arg(details.isEmpty() ? QString() : "\n" + details));
+            return;
+        }
+
+        const QJsonObject addon =
+            response["result"].toObject()["addon"].toObject();
+        if (addon.isEmpty() || !addon["enabled"].toBool(false)) {
+            QMessageBox::warning(
+                this,
+                QStringLiteral("IPTV Simple Client выключен"),
+                QStringLiteral("Дополнение IPTV Simple Client (pvr.iptvsimple) "
+                               "не установлено или выключено.\n\n"
+                               "Включите его в Kodi: Настройки → Дополнения → "
+                               "Мои дополнения → Клиенты PVR → IPTV Simple Client.\n\n"
+                               "Воспроизведение канала отменено, чтобы избежать "
+                               "аварийного завершения Kodi."));
+            return;
+        }
+
+        QJsonObject obj;
+        obj["jsonrpc"] = "2.0";
+        obj["id"] = rpcId++;
+        obj["method"] = "Player.Open";
+        obj["params"] = QJsonObject{
+            {"item", QJsonObject{{"channelid", channelId}}}
+        };
+
+        sendJsonRpc(obj, QString("Player.Open channelid=%1").arg(channelId));
+    });
 }
 
 void MainWindow::postPlayerStop()
