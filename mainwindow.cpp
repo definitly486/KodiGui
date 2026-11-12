@@ -135,7 +135,16 @@ void MainWindow::sendJsonRpc(
 
     connect(reply, &QNetworkReply::finished, this, [=]() {
         if (reply->error() != QNetworkReply::NoError) {
-            qWarning() << desc << "failed:" << reply->errorString();
+            const QString errorText = reply->errorString();
+            qWarning() << desc << "failed:" << errorText;
+            if (onSuccess) {
+                QJsonObject errorResponse;
+                errorResponse["error"] = QJsonObject{
+                    {"code", -1},
+                    {"message", errorText}
+                };
+                onSuccess(errorResponse);
+            }
             reply->deleteLater();
             return;
         }
@@ -364,12 +373,63 @@ void MainWindow::on_pushButton_clicked()
     if (kodidlpProcess->state() != QProcess::NotRunning)
         return;
 
-    ui->textEdit_info->clear();
-    ui->textEdit_info->append(QStringLiteral("[Запуск kodidlp...]"));
-    ui->pushButton->setEnabled(false);
-    ui->pushButton->setText(QStringLiteral("Выполняется..."));
+    // Перед запуском kodidlp проверяем, что IPTV Simple Client включён.
+    // Это предотвращает запуск обработки URL в Kodi с выключенным PVR-клиентом.
+    QJsonObject check;
+    check["jsonrpc"] = "2.0";
+    check["id"] = rpcId++;
+    check["method"] = "Addons.GetAddonDetails";
+    check["params"] = QJsonObject{
+        {"addonid", "pvr.iptvsimple"},
+        {"properties", QJsonArray{"name", "enabled", "version"}}
+    };
 
-    kodidlpProcess->start(QStringLiteral("kodidlp"), QStringList{input});
+    ui->textEdit_info->append(QStringLiteral("[Проверка IPTV Simple Client...]"));
+    ui->pushButton->setEnabled(false);
+    ui->pushButton->setText(QStringLiteral("Проверка..."));
+
+    sendJsonRpc(check, "Check IPTV Simple Client before kodidlp",
+                [this, input](const QJsonObject &response) {
+        if (response.contains("error")) {
+            const QString details =
+                response["error"].toObject()["message"].toString();
+            ui->textEdit_info->append(
+                QStringLiteral("[Не удалось проверить IPTV Simple Client: %1]")
+                    .arg(details.isEmpty() ? QStringLiteral("неизвестная ошибка") : details));
+            ui->pushButton->setEnabled(true);
+            ui->pushButton->setText(QStringLiteral("run"));
+            QMessageBox::warning(
+                this,
+                QStringLiteral("IPTV Simple Client"),
+                QStringLiteral("Не удалось проверить состояние IPTV Simple Client на Kodi.\n\n"
+                               "Запуск kodidlp отменён."));
+            return;
+        }
+
+        const QJsonObject addon =
+            response["result"].toObject()["addon"].toObject();
+        if (addon.isEmpty() || !addon["enabled"].toBool(false)) {
+            ui->textEdit_info->append(
+                QStringLiteral("[IPTV Simple Client выключен — запуск kodidlp отменён]"));
+            ui->pushButton->setEnabled(true);
+            ui->pushButton->setText(QStringLiteral("run"));
+            QMessageBox::warning(
+                this,
+                QStringLiteral("IPTV Simple Client выключен"),
+                QStringLiteral("Дополнение IPTV Simple Client (pvr.iptvsimple) "
+                               "не установлено или выключено.\n\n"
+                               "Включите его в Kodi: Настройки → Дополнения → "
+                               "Мои дополнения → Клиенты PVR → IPTV Simple Client.\n\n"
+                               "Запуск kodidlp отменён."));
+            return;
+        }
+
+        ui->textEdit_info->clear();
+        ui->textEdit_info->append(QStringLiteral("[IPTV Simple Client включён]"));
+        ui->textEdit_info->append(QStringLiteral("[Запуск kodidlp...]"));
+        ui->pushButton->setText(QStringLiteral("Выполняется..."));
+        kodidlpProcess->start(QStringLiteral("kodidlp"), QStringList{input});
+    });
 }
 
 void MainWindow::on_pushButton_info_clicked()
