@@ -1168,8 +1168,8 @@ void MainWindow::on_pushButton_rundrm_clicked()
                 if (drmFileCheckTimer)
                     drmFileCheckTimer->stop();
                 QMessageBox::warning(this, "DRM",
-                    "FFmpeg завершился до создания drm.mp4.\\n\\n"
-                    "Последние строки журнала:\\n" + output);
+                    "FFmpeg завершился до создания drm.mp4.\n\n"
+                    "Последние строки журнала:\n" + output);
             }
         });
     }
@@ -1178,7 +1178,19 @@ void MainWindow::on_pushButton_rundrm_clicked()
         drmFileCheckTimer = new QTimer(this);
         drmFileCheckTimer->setInterval(1500);
         connect(drmFileCheckTimer, &QTimer::timeout, this, [this]() {
-            if (drmFileCheckProcess->state() == QProcess::NotRunning) {
+            if (drmFileCheckProcess->state() != QProcess::NotRunning)
+                return;
+
+            // Ограничиваем ожидание, чтобы при ошибке SSH/загрузчика не проверять бесконечно.
+            if (++drmFileCheckAttempts > 60) {
+                drmFileCheckTimer->stop();
+                QMessageBox::warning(this, "DRM",
+                    "За 90 секунд файл drm.mp4 не появился.\\n"
+                    "Проверьте /tmp/drm-download.log и /tmp/drm-mux.log на Raspberry Pi.");
+                return;
+            }
+
+            {
                 drmFileCheckProcess->start("ssh", {
                     "pi@192.168.8.45",
                     "if [ -s \"$HOME/drm.mp4\" ]; then "
@@ -1194,6 +1206,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
             }
         });
     }
+    drmFileCheckAttempts = 0;
     drmFileCheckTimer->start();
 
     qDebug() << "DRM: N_m3u8DL-RE запущен в фоне";
