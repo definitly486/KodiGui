@@ -27,6 +27,7 @@
 #include <QDateTime>
 #include <QMetaObject>
 #include <QTextEdit>
+#include <cstdlib>
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 
@@ -510,18 +511,24 @@ void MainWindow::on_pushButton_info_clicked()
     process.setArguments(arguments);
 
     // Запуск процесса
+    qInfo() << "Starting streamlink:" << process.program() << arguments;
     process.start();
 
     if (!process.waitForFinished()) {
+        qCritical() << "streamlink failed:" << process.errorString();
         ui->textEdit_info->setText("Ошибка выполнения процесса");
         return;
     }
 
     // Чтение вывода (stdout)
     QString output = process.readAllStandardOutput();
+    qInfo().noquote() << "[streamlink stdout]" << output.trimmed();
 
     // Если нужно — читаем ошибки
     QString errorOutput = process.readAllStandardError();
+    if (!errorOutput.isEmpty())
+        qWarning().noquote() << "[streamlink stderr]" << errorOutput.trimmed();
+    qInfo() << "streamlink finished; exitCode=" << process.exitCode();
 
     // Выводим в textEdit
     ui->textEdit_info->setText(output + "\n" + errorOutput);
@@ -1090,6 +1097,7 @@ void MainWindow::on_getonairnow_clicked()
     });
 
     connect(pythonProcess, &QProcess::finished, this, [this, scriptPath](int exitCode) {
+        qInfo() << "MatchTV Python finished; exitCode=" << exitCode;
         if (exitCode == 0)
             ui->textBrowseronairnow->append("<hr><b><font color='green'>Матч успешно обработан</font></b>");
         else
@@ -1097,6 +1105,7 @@ void MainWindow::on_getonairnow_clicked()
         QFile::remove(scriptPath);
     });
 
+    qInfo() << "Starting MatchTV Python script:" << pythonCmd << scriptPath;
     pythonProcess->start(pythonCmd, QStringList() << scriptPath);
 }
 
@@ -1302,6 +1311,9 @@ void MainWindow::on_pushButton_rundrm_clicked()
                 this, [this](int exitCode, QProcess::ExitStatus) {
             const QString output =
                 QString::fromUtf8(drmFileCheckProcess->readAllStandardOutput());
+            if (!output.isEmpty())
+                qInfo().noquote() << "[DRM remote check]" << output.trimmed();
+            qInfo() << "DRM remote check finished; exitCode=" << exitCode;
 
             if (exitCode == 0 && output.contains("DRM_MP4_READY")) {
                 if (drmFileCheckTimer)
@@ -1337,6 +1349,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
             }
 
             {
+                qInfo() << "Checking remote DRM output and assembler status";
                 drmFileCheckProcess->start("ssh", {
                     "pi@192.168.8.45",
                     "if [ -s \"$HOME/drm.mp4\" ]; then "
