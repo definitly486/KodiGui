@@ -27,6 +27,7 @@
 #include <QDateTime>
 #include <QMetaObject>
 #include <QTextEdit>
+#include <QScrollBar>
 #include <QCheckBox>
 #include <atomic>
 #include <cstdlib>
@@ -75,7 +76,11 @@ void debugMessageHandler(QtMsgType type, const QMessageLogContext &context,
             if (!target)
                 return;
             target->append(line.toHtmlEscaped());
-            target->moveCursor(QTextCursor::End);
+            // вертикальный — в конец (новые сообщения), горизонтальный — всегда слева
+            if (auto *v = target->verticalScrollBar())
+                v->setValue(v->maximum());
+            if (auto *h = target->horizontalScrollBar())
+                h->setValue(h->minimum());
         }, Qt::QueuedConnection);
     }
 
