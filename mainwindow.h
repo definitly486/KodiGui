@@ -89,13 +89,12 @@ private slots:
 
        void on_pushButton_cleardrm_clicked();
 
-       void on_pushButton_playdrmts_clicked();
+       void on_pushButton_playdrm_clicked();
 
        void on_pushButton_kill_m3u8DL_clicked();
 
        void on_pushButton_17_clicked();
 
-       void on_pushButton_playdrmaarts_clicked();
 
        void on_pushButton_18_clicked();
 
