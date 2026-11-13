@@ -1185,7 +1185,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
             if (++drmFileCheckAttempts > 60) {
                 drmFileCheckTimer->stop();
                 QMessageBox::warning(this, "DRM",
-                    "За 90 секунд файл drm.mp4 не появился.\\n"
+                    "За 90 секунд файл drm.mp4 не появился.\n"
                     "Проверьте /tmp/drm-download.log и /tmp/drm-mux.log на Raspberry Pi.");
                 return;
             }
