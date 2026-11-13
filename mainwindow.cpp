@@ -1090,70 +1090,106 @@ void MainWindow::on_pushButton_rundrm_clicked()
         return;
     }
 
-    // 1. Останавливаем предыдущую загрузку и конвертер.
-    sshKillProcess("N_m3u8DL-RE");
-    runCommand("ssh", {user,
-        "if [ -s \"$HOME/drm_mux.pid\" ]; then "
-        "p=$(cat \"$HOME/drm_mux.pid\"); "
-        "kill -TERM -- -\"$p\" 2>/dev/null || true; "
-        "rm -f \"$HOME/drm_mux.pid\"; fi; "
-        "killall -9 ffmpeg 2>/dev/null || true"});
+    // Все операции подготовки и запуска выполняются одной SSH-командой.
+    // Это исключает гонку между несколькими независимыми startDetached().
+    auto shellQuote = [](const QString &value) {
+        QString escaped = value;
+        escaped.replace("'", "'\\''");
+        return "'" + escaped + "'";
+    };
 
-    // 2. Подготавливаем единый выходной MP4 и промежуточный TS.
-    // TS нужен только как вход для FFmpeg и не используется кнопкой Play.
-    runCommand("ssh", {user,
-        "rm -f \"$HOME/drm.mp4\" \"$HOME/drm.ts\"; touch \"$HOME/drm.ts\" "});
-
-    // 3. N_m3u8DL-RE пишет живой TS, FFmpeg одновременно преобразует
-    // его в fragmented MP4, который можно читать до окончания записи.
-    const QString remoteCmd = QString(
-        "nohup N_m3u8DL-RE %1 -M format=mp4 --key %2 -sv worst "
-        "--save-name drm --save-dir $HOME --live-pipe-mux "
-        "--select-audio id='audio_aar=128000' "
-        "> /tmp/drm-download.log 2>&1 & "
-        "sleep 1; "
-        "nohup setsid bash -c '"
-        "tail -c +1 -f \"$HOME/drm.ts\" | "
-        "ffmpeg -nostdin -hide_banner -loglevel error -i pipe:0 "
+    const QString muxScript = QString::fromUtf8(
+        "set -o pipefail; "
+        "echo 'Ожидание непустого drm.ts...' >> /tmp/drm-mux.log; "
+        "for i in $(seq 1 60); do "
+        "  [ -s \"$HOME/drm.ts\" ] && break; "
+        "  sleep 1; "
+        "done; "
+        "if [ ! -s \"$HOME/drm.ts\" ]; then "
+        "  echo 'ERROR: drm.ts не появился или остался пустым за 60 секунд' >> /tmp/drm-mux.log; "
+        "  exit 1; "
+        "fi; "
+        "echo 'drm.ts найден, запускаю FFmpeg' >> /tmp/drm-mux.log; "
+        "tail -c +1 -F \"$HOME/drm.ts\" | "
+        "ffmpeg -nostdin -hide_banner -loglevel warning -f mpegts -i pipe:0 "
         "-map 0:v:0? -map 0:a:0? -c copy "
         "-movflags +empty_moov+default_base_moof+frag_keyframe "
         "-frag_duration 1000000 -f mp4 \"$HOME/drm.mp4\""
-        "' > /tmp/drm-mux.log 2>&1 < /dev/null & "
-        "echo $! > \"$HOME/drm_mux.pid\""
-    ).arg(input, keydrm);
+    );
+
+    const QString remoteCmd =
+        // Останавливаем старые процессы, затем только после этого удаляем старые файлы.
+        "if [ -s \"$HOME/drm_mux.pid\" ]; then "
+        "  old_mux=$(cat \"$HOME/drm_mux.pid\"); "
+        "  kill -TERM -- -\"$old_mux\" 2>/dev/null || true; "
+        "fi; "
+        "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
+        "killall -9 ffmpeg 2>/dev/null || true; "
+        "sleep 1; "
+        "rm -f \"$HOME/drm_mux.pid\" \"$HOME/drm_download.pid\" "
+        "      \"$HOME/drm.mp4\" \"$HOME/drm.ts\" \"$HOME/drm.aar.ts\"; "
+        ": > /tmp/drm-download.log; "
+        ": > /tmp/drm-mux.log; "
+        "touch \"$HOME/drm.ts\"; "
+        // Запускаем загрузчик и сохраняем его PID.
+        "nohup N_m3u8DL-RE " + shellQuote(input) +
+        " -M format=mp4 --key " + shellQuote(keydrm) +
+        " -sv worst --save-name drm --save-dir \"$HOME\" --live-pipe-mux "
+        "--select-audio id='audio_aar=128000' "
+        "> /tmp/drm-download.log 2>&1 < /dev/null & "
+        "echo $! > \"$HOME/drm_download.pid\"; "
+        // Конвертер ждёт появления данных, затем следит за пересозданием TS через tail -F.
+        "nohup setsid bash -c " + shellQuote(muxScript) +
+        " > /tmp/drm-mux.log 2>&1 < /dev/null & "
+        "echo $! > \"$HOME/drm_mux.pid\"";
 
     runCommand("ssh", {user, remoteCmd});
 
-    // Проверяем появление непустого drm.mp4 на удалённом устройстве.
-    // Проверка выполняется асинхронно, чтобы не блокировать интерфейс.
-    if (drmFileCheckTimer) {
+    // Проверяем появление непустого drm.mp4 и состояние группы FFmpeg.
+    if (drmFileCheckTimer)
         drmFileCheckTimer->stop();
-    }
-    if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning) {
+    if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning)
         drmFileCheckProcess->kill();
-    }
+
     if (!drmFileCheckProcess) {
         drmFileCheckProcess = new QProcess(this);
         connect(drmFileCheckProcess,
                 QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                 this, [this](int exitCode, QProcess::ExitStatus) {
-            const QString output = QString::fromUtf8(drmFileCheckProcess->readAllStandardOutput());
+            const QString output =
+                QString::fromUtf8(drmFileCheckProcess->readAllStandardOutput());
+
             if (exitCode == 0 && output.contains("DRM_MP4_READY")) {
                 if (drmFileCheckTimer)
                     drmFileCheckTimer->stop();
                 QMessageBox::information(this, "DRM",
-                                         "Файл drm.mp4 появился на устройстве. Можно нажать Play.");
+                    "Файл drm.mp4 появился на устройстве. Можно нажать Play.");
+            } else if (output.contains("DRM_MUX_FAILED")) {
+                if (drmFileCheckTimer)
+                    drmFileCheckTimer->stop();
+                QMessageBox::warning(this, "DRM",
+                    "FFmpeg завершился до создания drm.mp4.\\n\\n"
+                    "Последние строки журнала:\\n" + output);
             }
         });
     }
+
     if (!drmFileCheckTimer) {
         drmFileCheckTimer = new QTimer(this);
-        drmFileCheckTimer->setInterval(1000);
+        drmFileCheckTimer->setInterval(1500);
         connect(drmFileCheckTimer, &QTimer::timeout, this, [this]() {
             if (drmFileCheckProcess->state() == QProcess::NotRunning) {
                 drmFileCheckProcess->start("ssh", {
                     "pi@192.168.8.45",
-                    "test -s \"$HOME/drm.mp4\" && echo DRM_MP4_READY"
+                    "if [ -s \"$HOME/drm.mp4\" ]; then "
+                    "  echo DRM_MP4_READY; "
+                    "elif [ -s \"$HOME/drm_mux.pid\" ]; then "
+                    "  p=$(cat \"$HOME/drm_mux.pid\"); "
+                    "  if ! kill -0 -- -\"$p\" 2>/dev/null; then "
+                    "    echo DRM_MUX_FAILED; "
+                    "    tail -n 20 /tmp/drm-mux.log; "
+                    "  fi; "
+                    "fi"
                 });
             }
         });
@@ -1204,14 +1240,15 @@ void MainWindow::on_pushButton_kill_m3u8DL_clicked()
     if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning)
         drmFileCheckProcess->kill();
 
-    sshKillProcess("N_m3u8DL-RE");
-    // Останавливаем группу процессов tail + FFmpeg, создающую drm.mp4.
+    // Остановка загрузчика и всей группы tail + FFmpeg на удалённом устройстве.
     runCommand("ssh", {"pi@192.168.8.45",
         "if [ -s \"$HOME/drm_mux.pid\" ]; then "
-        "p=$(cat \"$HOME/drm_mux.pid\"); "
-        "kill -TERM -- -\"$p\" 2>/dev/null || true; "
-        "rm -f \"$HOME/drm_mux.pid\"; fi; "
-        "killall -9 ffmpeg 2>/dev/null || true"});
+        "  p=$(cat \"$HOME/drm_mux.pid\"); "
+        "  kill -TERM -- -\"$p\" 2>/dev/null || true; "
+        "fi; "
+        "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
+        "killall -9 ffmpeg 2>/dev/null || true; "
+        "rm -f \"$HOME/drm_mux.pid\" \"$HOME/drm_download.pid\""});
 }
 
 
