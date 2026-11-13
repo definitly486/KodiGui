@@ -24,6 +24,9 @@
 #include <QtConcurrent>
 #include <QFuture>
 #include <QPointer>
+#include <QDateTime>
+#include <QMetaObject>
+#include <QTextEdit>
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 
@@ -36,6 +39,42 @@ void runCommand(const QString &command, const QStringList &args = {});
 #include <netdb.h>
 #include <unistd.h>
 
+namespace {
+QPointer<QTextEdit> debugOutput;
+
+void debugMessageHandler(QtMsgType type, const QMessageLogContext &context,
+                         const QString &message)
+{
+    QString level;
+    switch (type) {
+    case QtDebugMsg:    level = QStringLiteral("DEBUG"); break;
+    case QtInfoMsg:     level = QStringLiteral("INFO"); break;
+    case QtWarningMsg:  level = QStringLiteral("WARNING"); break;
+    case QtCriticalMsg: level = QStringLiteral("CRITICAL"); break;
+    case QtFatalMsg:    level = QStringLiteral("FATAL"); break;
+    }
+
+    QString line = QStringLiteral("[%1] [%2]")
+        .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs), level);
+    if (context.category && *context.category)
+        line += QStringLiteral(" [%1]").arg(QString::fromLatin1(context.category));
+    line += QStringLiteral(" ") + message;
+
+    const QPointer<QTextEdit> target = debugOutput;
+    if (target) {
+        QMetaObject::invokeMethod(target, [target, line]() {
+            if (!target)
+                return;
+            target->append(line.toHtmlEscaped());
+            target->moveCursor(QTextCursor::End);
+        }, Qt::QueuedConnection);
+    }
+
+    if (type == QtFatalMsg)
+        abort();
+}
+} // namespace
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -44,6 +83,13 @@ MainWindow::MainWindow(QWidget *parent)
     , kodidlpProcess(new QProcess(this))
 {
     ui->setupUi(this);
+
+    debugOutput = ui->debugTextEdit;
+    ui->debugTextEdit->document()->setMaximumBlockCount(15000);
+    qInstallMessageHandler(debugMessageHandler);
+    connect(ui->debugClearButton, &QPushButton::clicked,
+            this, &MainWindow::on_debugClearButton_clicked);
+    qInfo() << "KodiGui debug logging started";
 
     const QString buildDate = QStringLiteral(__DATE__);
     const QString buildTime = QStringLiteral(__TIME__);
@@ -68,20 +114,25 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(kodidlpProcess, &QProcess::readyReadStandardOutput, this, [this]() {
         const QString output = QString::fromLocal8Bit(kodidlpProcess->readAllStandardOutput());
-        if (!output.isEmpty())
-            {
+        if (!output.isEmpty()) {
+            qInfo().noquote() << "[kodidlp stdout]" << output.trimmed();
             ui->textEdit_info->moveCursor(QTextCursor::End);
             ui->textEdit_info->insertPlainText(output);
         }
     });
     connect(kodidlpProcess, &QProcess::readyReadStandardError, this, [this]() {
         const QString output = QString::fromLocal8Bit(kodidlpProcess->readAllStandardError());
-        if (!output.isEmpty())
-            ui->textEdit_info->moveCursor(QTextCursor::End), ui->textEdit_info->insertPlainText(output);
+        if (!output.isEmpty()) {
+            qWarning().noquote() << "[kodidlp stderr]" << output.trimmed();
+            ui->textEdit_info->moveCursor(QTextCursor::End);
+            ui->textEdit_info->insertPlainText(output);
+        }
     });
     connect(kodidlpProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+        qInfo() << "kodidlp finished; exitCode=" << exitCode
+                 << "exitStatus=" << exitStatus;
         ui->pushButton->setEnabled(true);
         ui->pushButton->setText(QStringLiteral("run"));
         ui->textEdit_info->append(
@@ -90,6 +141,8 @@ MainWindow::MainWindow(QWidget *parent)
                 : QStringLiteral("\n[kodidlp завершился с ошибкой: %1]").arg(exitCode));
     });
     connect(kodidlpProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        qCritical() << "kodidlp process error:" << error
+                    << kodidlpProcess->errorString();
         if (error == QProcess::FailedToStart) {
             ui->pushButton->setEnabled(true);
             ui->pushButton->setText(QStringLiteral("run"));
@@ -114,6 +167,12 @@ MainWindow::~MainWindow()
 }
 
 
+void MainWindow::on_debugClearButton_clicked()
+{
+    ui->debugTextEdit->clear();
+    qInfo() << "Debug log cleared";
+}
+
 void MainWindow::on_horizontalSlider_valueChanged(int value)
 {
     postSetVolume(value);
@@ -128,14 +187,14 @@ void MainWindow::sendJsonRpc(
     QNetworkRequest request(QUrl("http://192.168.8.45:8081/jsonrpc"));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
-    QNetworkReply *reply = manager->post(
-        request,
-        QJsonDocument(json).toJson()
-        );
+    const QByteArray requestBody = QJsonDocument(json).toJson(QJsonDocument::Compact);
+    qInfo().noquote() << "[Kodi JSON-RPC request]" << desc << requestBody;
+    QNetworkReply *reply = manager->post(request, requestBody);
 
     connect(reply, &QNetworkReply::finished, this, [=]() {
         if (reply->error() != QNetworkReply::NoError) {
             const QString errorText = reply->errorString();
+            qWarning() << "[Kodi network error]" << desc << errorText;
             qWarning() << desc << "failed:" << errorText;
             if (onSuccess) {
                 QJsonObject errorResponse;
@@ -149,8 +208,9 @@ void MainWindow::sendJsonRpc(
             return;
         }
 
-        QJsonObject response =
-            QJsonDocument::fromJson(reply->readAll()).object();
+        const QByteArray responseBody = reply->readAll();
+        qInfo().noquote() << "[Kodi JSON-RPC response]" << desc << responseBody;
+        QJsonObject response = QJsonDocument::fromJson(responseBody).object();
 
         qDebug() << desc << "OK";
 
@@ -1007,6 +1067,8 @@ void MainWindow::on_getonairnow_clicked()
     disconnect(pythonProcess, &QProcess::readyReadStandardOutput, nullptr, nullptr); // на всякий
     connect(pythonProcess, &QProcess::readyReadStandardOutput, this, [this]() {
         QString out = pythonProcess->readAllStandardOutput();
+        if (!out.isEmpty())
+            qInfo().noquote() << "[MatchTV Python stdout]" << out.trimmed();
         ui->textBrowseronairnow->append(out.trimmed());
     });
 
@@ -1014,11 +1076,17 @@ void MainWindow::on_getonairnow_clicked()
       pythonProcess->disconnect(); // чистим все старые сигналы
 
     connect(pythonProcess, &QProcess::readyReadStandardOutput, this, [this]() {
-        ui->textBrowseronairnow->append(pythonProcess->readAllStandardOutput().trimmed());
+        const QString out = pythonProcess->readAllStandardOutput().trimmed();
+        if (!out.isEmpty())
+            qInfo().noquote() << "[MatchTV Python stdout]" << out;
+        ui->textBrowseronairnow->append(out);
     });
 
     connect(pythonProcess, &QProcess::readyReadStandardError, this, [this]() {
-        ui->textBrowseronairnow->append("<font color='red'>" + pythonProcess->readAllStandardError().trimmed() + "</font>");
+        const QString err = pythonProcess->readAllStandardError().trimmed();
+        if (!err.isEmpty())
+            qWarning().noquote() << "[MatchTV Python stderr]" << err;
+        ui->textBrowseronairnow->append("<font color='red'>" + err.toHtmlEscaped() + "</font>");
     });
 
     connect(pythonProcess, &QProcess::finished, this, [this, scriptPath](int exitCode) {
@@ -1360,17 +1428,19 @@ void MainWindow::on_pushButton_18_clicked()
 {
     QProcess *process = new QProcess(this);
 
-    connect(process, &QProcess::readyReadStandardOutput, this, [=]()
-            {
-                QByteArray data = process->readAllStandardOutput();
-                ui->textEdit->append(QString::fromUtf8(data));
-            });
+    connect(process, &QProcess::readyReadStandardOutput, this, [=]() {
+        QByteArray data = process->readAllStandardOutput();
+        if (!data.isEmpty())
+            qInfo().noquote() << "[Monitor stdout]" << QString::fromUtf8(data).trimmed();
+        ui->textEdit->append(QString::fromUtf8(data));
+    });
 
-    connect(process, &QProcess::readyReadStandardError, this, [=]()
-            {
-                QByteArray data = process->readAllStandardError();
-                ui->textEdit->append(QString::fromUtf8(data));
-            });
+    connect(process, &QProcess::readyReadStandardError, this, [=]() {
+        QByteArray data = process->readAllStandardError();
+        if (!data.isEmpty())
+            qWarning().noquote() << "[Monitor stderr]" << QString::fromUtf8(data).trimmed();
+        ui->textEdit->append(QString::fromUtf8(data));
+    });
 
     QString program = "sshpass";
     QStringList arguments;
