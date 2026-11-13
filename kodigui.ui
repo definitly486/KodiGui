@@ -590,7 +590,7 @@
        <string>clear</string>
       </property>
      </widget>
-     <widget class="QPushButton" name="pushButton_playdrmts">
+     <widget class="QPushButton" name="pushButton_playdrm">
       <property name="geometry">
        <rect>
         <x>170</x>
@@ -600,7 +600,7 @@
        </rect>
       </property>
       <property name="text">
-       <string>Play drm.ts</string>
+       <string>Play</string>
       </property>
      </widget>
      <widget class="QPushButton" name="pushButton_kill_m3u8DL">
@@ -640,19 +640,6 @@
       </property>
       <property name="text">
        <string>Close popup dialog</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_playdrmaarts">
-      <property name="geometry">
-       <rect>
-        <x>170</x>
-        <y>170</y>
-        <width>121</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Play drm.aar.ts</string>
       </property>
      </widget>
     </widget>
