@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>584</width>
-    <height>451</height>
+    <width>900</width>
+    <height>600</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,714 +19,902 @@
     <normalon>:/icons/kodi.ico</normalon>:/kodi.ico</iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QTabWidget" name="tabWidget">
-    <property name="geometry">
-     <rect>
-      <x>-10</x>
-      <y>0</y>
-      <width>601</width>
-      <height>471</height>
-     </rect>
+   <layout class="QVBoxLayout" name="centralLayout">
+    <property name="leftMargin">
+     <number>4</number>
     </property>
-    <property name="currentIndex">
-     <number>1</number>
+    <property name="topMargin">
+     <number>4</number>
     </property>
-    <widget class="QWidget" name="volume">
-     <attribute name="title">
-      <string>Volume</string>
-     </attribute>
-     <widget class="QLabel" name="label">
-      <property name="geometry">
-       <rect>
-        <x>100</x>
-        <y>100</y>
-        <width>57</width>
-        <height>14</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Volume</string>
-      </property>
-     </widget>
-     <widget class="QSlider" name="horizontalSlider">
-      <property name="geometry">
-       <rect>
-        <x>100</x>
-        <y>120</y>
-        <width>160</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="sliderPosition">
-       <number>50</number>
-      </property>
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QWidget" name="url">
-     <attribute name="title">
-      <string>URL</string>
-     </attribute>
-     <widget class="QLineEdit" name="lineEdit">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>80</y>
-        <width>113</width>
-        <height>22</height>
-       </rect>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>100</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>run</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_7">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>230</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>run</string>
-      </property>
-     </widget>
-     <widget class="QLineEdit" name="lineEdit_2">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>210</y>
-        <width>161</width>
-        <height>22</height>
-       </rect>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_2">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>60</y>
-        <width>101</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>kodidlp</string>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_3">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>190</y>
-        <width>81</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>echoplaylist</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_clearurl">
-      <property name="geometry">
-       <rect>
-        <x>470</x>
-        <y>140</y>
-        <width>80</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>clear url</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_info">
-      <property name="geometry">
-       <rect>
-        <x>360</x>
-        <y>100</y>
-        <width>80</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>info</string>
-      </property>
-     </widget>
-     <widget class="QTextEdit" name="textEdit_info">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>270</y>
-        <width>291</width>
-        <height>70</height>
-       </rect>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QWidget" name="widget">
-     <attribute name="title">
-      <string>Player</string>
-     </attribute>
-     <widget class="QPushButton" name="pushButton_2">
-      <property name="geometry">
-       <rect>
-        <x>140</x>
-        <y>100</y>
-        <width>80</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Play Channel</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_3">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>100</y>
-        <width>80</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Stop Channel</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_13">
-      <property name="geometry">
-       <rect>
-        <x>80</x>
-        <y>230</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Enable</string>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_6">
-      <property name="geometry">
-       <rect>
-        <x>80</x>
-        <y>210</y>
-        <width>121</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>IPTV Simple Client</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_14">
-      <property name="geometry">
-       <rect>
-        <x>310</x>
-        <y>230</y>
-        <width>80</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Close</string>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_7">
-      <property name="geometry">
-       <rect>
-        <x>310</x>
-        <y>210</y>
-        <width>181</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Close popup dialog</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="playdrm_17">
-      <property name="geometry">
-       <rect>
-        <x>330</x>
-        <y>100</y>
-        <width>101</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Play drm.mp4</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="stopdrm_18">
-      <property name="geometry">
-       <rect>
-        <x>450</x>
-        <y>100</y>
-        <width>101</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Stop drm.mp4</string>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QWidget" name="power">
-     <attribute name="title">
-      <string>Power</string>
-     </attribute>
-     <widget class="QPushButton" name="pushButton_4">
-      <property name="geometry">
-       <rect>
-        <x>80</x>
-        <y>120</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Star Kodi</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_5">
-      <property name="geometry">
-       <rect>
-        <x>360</x>
-        <y>120</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Reboot</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_6">
-      <property name="geometry">
-       <rect>
-        <x>220</x>
-        <y>120</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Kill Kodi</string>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QWidget" name="tab">
-     <attribute name="title">
-      <string>Youtube Pi</string>
-     </attribute>
-     <widget class="QLineEdit" name="lineEdit_3">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>50</y>
-        <width>113</width>
-        <height>22</height>
-       </rect>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_4">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>30</y>
-        <width>131</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Введите live url</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_8">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>70</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>run</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_9">
-      <property name="geometry">
-       <rect>
-        <x>120</x>
-        <y>150</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Play yt.mp4</string>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_5">
-      <property name="geometry">
-       <rect>
-        <x>230</x>
-        <y>10</y>
-        <width>321</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Только для live эфира</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_10">
-      <property name="geometry">
-       <rect>
-        <x>220</x>
-        <y>150</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Stop yt.mp4</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_11">
-      <property name="geometry">
-       <rect>
-        <x>120</x>
-        <y>190</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Kill yt-dlp</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_12">
-      <property name="geometry">
-       <rect>
-        <x>220</x>
-        <y>190</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Kill ffmpeg</string>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QWidget" name="MatchTV">
-     <attribute name="title">
-      <string>Матч ТВ</string>
-     </attribute>
-     <widget class="QPushButton" name="pushButton_15">
-      <property name="geometry">
-       <rect>
-        <x>50</x>
-        <y>70</y>
-        <width>101</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Получить URL</string>
-      </property>
-     </widget>
-     <widget class="QLineEdit" name="lineEdit_4">
-      <property name="geometry">
-       <rect>
-        <x>50</x>
-        <y>40</y>
-        <width>221</width>
-        <height>23</height>
-       </rect>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_16">
-      <property name="geometry">
-       <rect>
-        <x>170</x>
-        <y>70</y>
-        <width>91</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Play</string>
-      </property>
-     </widget>
-     <widget class="QTextBrowser" name="textBrowseronairnow">
-      <property name="geometry">
-       <rect>
-        <x>300</x>
-        <y>10</y>
-        <width>281</width>
-        <height>221</height>
-       </rect>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="getonairnow">
-      <property name="geometry">
-       <rect>
-        <x>300</x>
-        <y>250</y>
-        <width>201</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Получить что сейчас в эфире</string>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QWidget" name="drm">
-     <attribute name="title">
-      <string>DRM</string>
-     </attribute>
-     <widget class="QLineEdit" name="lineEdit_drm">
-      <property name="geometry">
-       <rect>
-        <x>60</x>
-        <y>50</y>
-        <width>113</width>
-        <height>23</height>
-       </rect>
-      </property>
-     </widget>
-     <widget class="QLineEdit" name="lineEdit_drm_key">
-      <property name="geometry">
-       <rect>
-        <x>290</x>
-        <y>50</y>
-        <width>113</width>
-        <height>23</height>
-       </rect>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_8">
-      <property name="geometry">
-       <rect>
-        <x>60</x>
-        <y>30</y>
-        <width>57</width>
-        <height>15</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>drm url</string>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_9">
-      <property name="geometry">
-       <rect>
-        <x>290</x>
-        <y>30</y>
-        <width>57</width>
-        <height>15</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>drm key</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_rundrm">
-      <property name="geometry">
-       <rect>
-        <x>60</x>
-        <y>140</y>
-        <width>80</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>run</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_killstreamlink">
-      <property name="geometry">
-       <rect>
-        <x>330</x>
-        <y>140</y>
-        <width>161</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Kill streamlink</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_cleardrm">
-      <property name="geometry">
-       <rect>
-        <x>500</x>
-        <y>140</y>
-        <width>80</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>clear</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_playdrm">
-      <property name="geometry">
-       <rect>
-        <x>170</x>
-        <y>140</y>
-        <width>80</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Play</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_kill_m3u8DL">
-      <property name="geometry">
-       <rect>
-        <x>330</x>
-        <y>170</y>
-        <width>161</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Kill N_m3u8DL-RE</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_17">
-      <property name="geometry">
-       <rect>
-        <x>60</x>
-        <y>230</y>
-        <width>80</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>close</string>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_10">
-      <property name="geometry">
-       <rect>
-        <x>60</x>
-        <y>210</y>
-        <width>131</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Close popup dialog</string>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QWidget" name="tab_2">
-     <attribute name="title">
-      <string>Monitor</string>
-     </attribute>
-     <widget class="QTextEdit" name="textEdit">
-      <property name="geometry">
-       <rect>
-        <x>20</x>
-        <y>10</y>
-        <width>561</width>
-        <height>271</height>
-       </rect>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="pushButton_18">
-      <property name="geometry">
-       <rect>
-        <x>20</x>
-        <y>310</y>
-        <width>83</width>
-        <height>22</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>top</string>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QWidget" name="info">
-     <attribute name="title">
-      <string>Info</string>
-     </attribute>
-     <widget class="QTextBrowser" name="buildInfoText">
-      <property name="geometry">
-       <rect>
-        <x>20</x>
-        <y>20</y>
-        <width>541</width>
-        <height>300</height>
-       </rect>
-      </property>
-      <property name="openExternalLinks">
+    <property name="rightMargin">
+     <number>4</number>
+    </property>
+    <property name="bottomMargin">
+     <number>4</number>
+    </property>
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>1</number>
+      </property>
+      <property name="usesScrollButtons">
        <bool>true</bool>
       </property>
+      <property name="documentMode">
+       <bool>false</bool>
+      </property>
+      <property name="tabsClosable">
+       <bool>false</bool>
+      </property>
+      <property name="movable">
+       <bool>false</bool>
+      </property>
+      <widget class="QWidget" name="volume">
+       <attribute name="title">
+        <string>Volume</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="volumeLayout">
+        <item>
+         <spacer name="volumeSpacerTop">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="volumeRow">
+          <item>
+           <spacer name="volumeSpacerL">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="volumeControls">
+            <item>
+             <widget class="QLabel" name="label">
+              <property name="text">
+               <string>Volume</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="horizontalSlider">
+              <property name="minimumSize">
+               <size>
+                <width>200</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="sliderPosition">
+               <number>50</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <spacer name="volumeSpacerR">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="volumeSpacerBottom">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="url">
+       <attribute name="title">
+        <string>URL</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="urlLayout">
+        <item>
+         <layout class="QFormLayout" name="urlForm">
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_2">
+            <property name="text">
+             <string>kodidlp</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEdit"/>
+          </item>
+          <item row="1" column="1">
+           <layout class="QHBoxLayout" name="urlKodidlpBtns">
+            <item>
+             <widget class="QPushButton" name="pushButton">
+              <property name="text">
+               <string>run</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_info">
+              <property name="text">
+               <string>info</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_clearurl">
+              <property name="text">
+               <string>clear url</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="urlSpacer1">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_3">
+            <property name="text">
+             <string>echoplaylist</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLineEdit" name="lineEdit_2"/>
+          </item>
+          <item row="3" column="1">
+           <layout class="QHBoxLayout" name="urlEchoBtns">
+            <item>
+             <widget class="QPushButton" name="pushButton_7">
+              <property name="text">
+               <string>run</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="urlSpacer2">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QTextEdit" name="textEdit_info">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>120</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="widget">
+       <attribute name="title">
+        <string>Player</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="playerLayout">
+        <item>
+         <spacer name="playerSpacerTop">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="playerRow1">
+          <item>
+           <spacer name="playerSpL1">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_2">
+            <property name="text">
+             <string>Play Channel</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_3">
+            <property name="text">
+             <string>Stop Channel</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="playdrm_17">
+            <property name="text">
+             <string>Play drm.mp4</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="stopdrm_18">
+            <property name="text">
+             <string>Stop drm.mp4</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="playerSpR1">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="playerRow2">
+          <item>
+           <spacer name="playerSpL2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="iptvCol">
+            <item>
+             <widget class="QLabel" name="label_6">
+              <property name="text">
+               <string>IPTV Simple Client</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_13">
+              <property name="text">
+               <string>Enable</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="popupCol">
+            <item>
+             <widget class="QLabel" name="label_7">
+              <property name="text">
+               <string>Close popup dialog</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_14">
+              <property name="text">
+               <string>Close</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <spacer name="playerSpR2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="playerSpacerBottom">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="power">
+       <attribute name="title">
+        <string>Power</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="powerLayout">
+        <item>
+         <spacer name="powerSpTop">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="powerRow">
+          <item>
+           <spacer name="powerSpL">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_4">
+            <property name="text">
+             <string>Star Kodi</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_6">
+            <property name="text">
+             <string>Kill Kodi</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_5">
+            <property name="text">
+             <string>Reboot</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="powerSpR">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="powerSpBottom">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab">
+       <attribute name="title">
+        <string>Youtube Pi</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="ytLayout">
+        <item>
+         <widget class="QLabel" name="label_5">
+          <property name="text">
+           <string>Только для live эфира</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QFormLayout" name="ytForm">
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_4">
+            <property name="text">
+             <string>Введите live url</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEdit_3"/>
+          </item>
+          <item row="1" column="1">
+           <widget class="QPushButton" name="pushButton_8">
+            <property name="text">
+             <string>run</string>
+            </property>
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="ytBtns">
+          <item>
+           <widget class="QPushButton" name="pushButton_9">
+            <property name="text">
+             <string>Play yt.mp4</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_10">
+            <property name="text">
+             <string>Stop yt.mp4</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_11">
+            <property name="text">
+             <string>Kill yt-dlp</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_12">
+            <property name="text">
+             <string>Kill ffmpeg</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="ytSp">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="ytSpBottom">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="MatchTV">
+       <attribute name="title">
+        <string>Матч ТВ</string>
+       </attribute>
+       <layout class="QHBoxLayout" name="matchLayout">
+        <item>
+         <layout class="QVBoxLayout" name="matchLeft">
+          <item>
+           <widget class="QLineEdit" name="lineEdit_4"/>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="matchBtns">
+            <item>
+             <widget class="QPushButton" name="pushButton_15">
+              <property name="text">
+               <string>Получить URL</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_16">
+              <property name="text">
+               <string>Play</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="matchSp">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <spacer name="matchSpV">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QVBoxLayout" name="matchRight">
+          <item>
+           <widget class="QTextBrowser" name="textBrowseronairnow">
+            <property name="minimumSize">
+             <size>
+              <width>280</width>
+              <height>200</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="getonairnow">
+            <property name="text">
+             <string>Получить что сейчас в эфире</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="drm">
+       <attribute name="title">
+        <string>DRM</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="drmLayout">
+        <item>
+         <layout class="QFormLayout" name="drmForm">
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_8">
+            <property name="text">
+             <string>drm url</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEdit_drm"/>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_9">
+            <property name="text">
+             <string>drm key</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="lineEdit_drm_key"/>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="drmBtns1">
+          <item>
+           <widget class="QPushButton" name="pushButton_rundrm">
+            <property name="text">
+             <string>run</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_playdrm">
+            <property name="text">
+             <string>Play</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_cleardrm">
+            <property name="text">
+             <string>clear</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="drmSp1">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="drmBtns2">
+          <item>
+           <widget class="QPushButton" name="pushButton_killstreamlink">
+            <property name="text">
+             <string>Kill streamlink</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_kill_m3u8DL">
+            <property name="text">
+             <string>Kill N_m3u8DL-RE</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="drmSp2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="drmBtns3">
+          <item>
+           <widget class="QLabel" name="label_10">
+            <property name="text">
+             <string>Close popup dialog</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_17">
+            <property name="text">
+             <string>close</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="drmSp3">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="drmSpBottom">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab_2">
+       <attribute name="title">
+        <string>Monitor</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="monitorLayout">
+        <item>
+         <widget class="QTextEdit" name="textEdit"/>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="monitorBtns">
+          <item>
+           <widget class="QPushButton" name="pushButton_18">
+            <property name="text">
+             <string>top</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="monitorSp">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="info">
+       <attribute name="title">
+        <string>Info</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="infoLayout">
+        <item>
+         <widget class="QTextBrowser" name="buildInfoText">
+          <property name="openExternalLinks">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="debugTab">
+       <attribute name="title">
+        <string>Debug</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="debugLayout">
+        <item>
+         <widget class="QCheckBox" name="debugEnableCheckBox">
+          <property name="text">
+           <string>Включить вывод информации</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTextEdit" name="debugTextEdit">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+          <property name="lineWrapMode">
+           <enum>QTextEdit::NoWrap</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="debugBtns">
+          <item>
+           <widget class="QPushButton" name="debugClearButton">
+            <property name="text">
+             <string>Очистить</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="debugSp">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
      </widget>
-    </widget>
-    <widget class="QWidget" name="debugTab">
-     <attribute name="title">
-      <string>Debug</string>
-     </attribute>
-     <widget class="QCheckBox" name="debugEnableCheckBox">
-      <property name="geometry">
-       <rect><x>10</x><y>10</y><width>250</width><height>22</height></rect>
-      </property>
-      <property name="text">
-       <string>Включить вывод информации</string>
-      </property>
-      <property name="checked">
-       <bool>true</bool>
-      </property>
-     </widget>
-     <widget class="QTextEdit" name="debugTextEdit">
-      <property name="geometry">
-       <rect><x>10</x><y>40</y><width>571</width><height>301</height></rect>
-      </property>
-      <property name="readOnly"><bool>true</bool></property>
-      <property name="lineWrapMode"><enum>QTextEdit::NoWrap</enum></property>
-     </widget>
-     <widget class="QPushButton" name="debugClearButton">
-      <property name="geometry">
-       <rect><x>10</x><y>350</y><width>100</width><height>25</height></rect>
-      </property>
-      <property name="text"><string>Очистить</string></property>
-     </widget>
-    </widget>
-   </widget>
+    </item>
+   </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>584</width>
-     <height>20</height>
+     <width>900</width>
+     <height>22</height>
     </rect>
    </property>
   </widget>
