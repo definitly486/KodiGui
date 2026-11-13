@@ -1090,20 +1090,35 @@ void MainWindow::on_pushButton_rundrm_clicked()
         return;
     }
 
-    // 1. Убиваем старый процесс
+    // 1. Останавливаем предыдущую загрузку и конвертер.
     sshKillProcess("N_m3u8DL-RE");
+    runCommand("ssh", {user,
+        "if [ -s \"$HOME/drm_mux.pid\" ]; then "
+        "p=$(cat \"$HOME/drm_mux.pid\"); "
+        "kill -TERM -- -\"$p\" 2>/dev/null || true; "
+        "rm -f \"$HOME/drm_mux.pid\"; fi"});
 
-    // 2. Удаляем результаты предыдущей записи.
-    runCommand("ssh", {user, "rm -rf $HOME/drm $HOME/drm.*"});
+    // 2. Подготавливаем единый выходной MP4 и промежуточный TS.
+    // TS нужен только как вход для FFmpeg и не используется кнопкой Play.
+    runCommand("ssh", {user,
+        "rm -f \"$HOME/drm.mp4\" \"$HOME/drm.ts\"; touch \"$HOME/drm.ts\" "});
 
-    // 3. Запускаем запись с обычным real-time merge.
-    // --live-pipe-mux всегда создаёт TS, поэтому здесь он не используется.
-    // После остановки записи N_m3u8DL-RE объединит дорожки в drm.mp4.
+    // 3. N_m3u8DL-RE пишет живой TS, FFmpeg одновременно преобразует
+    // его в fragmented MP4, который можно читать до окончания записи.
     const QString remoteCmd = QString(
         "nohup N_m3u8DL-RE %1 -M format=mp4 --key %2 -sv worst "
-        "--save-name drm --save-dir $HOME --live-real-time-merge "
+        "--save-name drm --save-dir $HOME --live-pipe-mux "
         "--select-audio id='audio_aar=128000' "
-        "> /dev/null 2>&1 &"
+        "> /tmp/drm-download.log 2>&1 & "
+        "sleep 1; "
+        "nohup setsid bash -c '"
+        "tail -c +1 -f \"$HOME/drm.ts\" | "
+        "ffmpeg -nostdin -hide_banner -loglevel error -i pipe:0 "
+        "-map 0:v:0? -map 0:a:0? -c copy "
+        "-movflags +empty_moov+default_base_moof+frag_keyframe "
+        "-frag_duration 1000000 -f mp4 \"$HOME/drm.mp4\""
+        "' > /tmp/drm-mux.log 2>&1 < /dev/null & "
+        "echo $! > \"$HOME/drm_mux.pid\""
     ).arg(input, keydrm);
 
     runCommand("ssh", {user, remoteCmd});
@@ -1148,6 +1163,12 @@ void MainWindow::on_pushButton_playdrmts_clicked()
 void MainWindow::on_pushButton_kill_m3u8DL_clicked()
 {
     sshKillProcess("N_m3u8DL-RE");
+    // Останавливаем группу процессов tail + FFmpeg, создающую drm.mp4.
+    runCommand("ssh", {"pi@192.168.8.45",
+        "if [ -s \"$HOME/drm_mux.pid\" ]; then "
+        "p=$(cat \"$HOME/drm_mux.pid\"); "
+        "kill -TERM -- -\"$p\" 2>/dev/null || true; "
+        "rm -f \"$HOME/drm_mux.pid\"; fi"});
 }
 
 
