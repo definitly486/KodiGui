@@ -27,6 +27,8 @@
 #include <QDateTime>
 #include <QMetaObject>
 #include <QTextEdit>
+#include <QCheckBox>
+#include <atomic>
 #include <cstdlib>
 #include <libssh2.h>
 #include <libssh2_sftp.h>
@@ -42,10 +44,16 @@ void runCommand(const QString &command, const QStringList &args = {});
 
 namespace {
 QPointer<QTextEdit> debugOutput;
+std::atomic_bool debugOutputEnabled{true};
 
 void debugMessageHandler(QtMsgType type, const QMessageLogContext &context,
                          const QString &message)
 {
+    if (!debugOutputEnabled.load(std::memory_order_relaxed)) {
+        if (type == QtFatalMsg)
+            abort();
+        return;
+    }
     QString level;
     switch (type) {
     case QtDebugMsg:    level = QStringLiteral("DEBUG"); break;
@@ -87,6 +95,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     debugOutput = ui->debugTextEdit;
     ui->debugTextEdit->document()->setMaximumBlockCount(15000);
+    connect(ui->debugEnableCheckBox, &QCheckBox::toggled, this, [](bool enabled) {
+        if (enabled) {
+            debugOutputEnabled.store(true, std::memory_order_relaxed);
+            qInfo() << "Debug output enabled";
+        } else {
+            qInfo() << "Debug output disabled";
+            debugOutputEnabled.store(false, std::memory_order_relaxed);
+        }
+    });
     qInstallMessageHandler(debugMessageHandler);
     qInfo() << "KodiGui debug logging started";
 
