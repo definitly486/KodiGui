@@ -1034,7 +1034,7 @@ void MainWindow::on_getonairnow_clicked()
 
 void MainWindow::on_playdrm_17_clicked()
 {
-    postPlayerOpenFile("/home/pi/drm.mp4");
+    postPlayerOpenFile("drm.mp4");
 }
 
 void MainWindow::on_stopdrm_18_clicked()
@@ -1093,15 +1093,13 @@ void MainWindow::on_pushButton_rundrm_clicked()
     // 1. Убиваем старый процесс
     sshKillProcess("N_m3u8DL-RE");
 
-    // 2. Удаляем предыдущий результат и временные файлы.
-    // Запись всегда ведётся в /home/pi/drm.mp4 независимо от HOME.
-    runCommand("ssh", {user,
-        "rm -rf /home/pi/drm.mp4 /home/pi/drm.ts /home/pi/drm"});
+    // 2. Чистим старые файлы (одна SSH-команда вместо двух)
+    runCommand("ssh", {user, "rm -rf $HOME/drm.ts $HOME/drm"});
 
-    // 3. Запускаем N_m3u8DL-RE в фоне на Pi с фиксированным путём.
+    // 3. Запускаем N_m3u8DL-RE в фоне на Pi
     const QString remoteCmd = QString(
         "nohup N_m3u8DL-RE %1 -M format=mp4 --key %2 -sv worst "
-        "--save-name drm --save-dir /home/pi --live-pipe-mux "
+        "--save-name drm --save-dir $HOME --live-pipe-mux "
         "--select-audio id='audio_aar=128000' "
         "> /dev/null 2>&1 &"
     ).arg(input, keydrm);
