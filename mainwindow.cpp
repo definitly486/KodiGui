@@ -1096,7 +1096,8 @@ void MainWindow::on_pushButton_rundrm_clicked()
         "if [ -s \"$HOME/drm_mux.pid\" ]; then "
         "p=$(cat \"$HOME/drm_mux.pid\"); "
         "kill -TERM -- -\"$p\" 2>/dev/null || true; "
-        "rm -f \"$HOME/drm_mux.pid\"; fi"});
+        "rm -f \"$HOME/drm_mux.pid\"; fi; "
+        "killall -9 ffmpeg 2>/dev/null || true"});
 
     // 2. Подготавливаем единый выходной MP4 и промежуточный TS.
     // TS нужен только как вход для FFmpeg и не используется кнопкой Play.
@@ -1168,7 +1169,8 @@ void MainWindow::on_pushButton_kill_m3u8DL_clicked()
         "if [ -s \"$HOME/drm_mux.pid\" ]; then "
         "p=$(cat \"$HOME/drm_mux.pid\"); "
         "kill -TERM -- -\"$p\" 2>/dev/null || true; "
-        "rm -f \"$HOME/drm_mux.pid\"; fi"});
+        "rm -f \"$HOME/drm_mux.pid\"; fi; "
+        "killall -9 ffmpeg 2>/dev/null || true"});
 }
 
 
