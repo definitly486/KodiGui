@@ -104,6 +104,7 @@ private slots:
  QProcess *kodidlpProcess;
  QTimer *drmFileCheckTimer = nullptr;
  QProcess *drmFileCheckProcess = nullptr;
+ int drmFileCheckAttempts = 0;
    QNetworkAccessManager *manager;
     int rpcId = 1;
 
