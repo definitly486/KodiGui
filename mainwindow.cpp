@@ -88,8 +88,6 @@ MainWindow::MainWindow(QWidget *parent)
     debugOutput = ui->debugTextEdit;
     ui->debugTextEdit->document()->setMaximumBlockCount(15000);
     qInstallMessageHandler(debugMessageHandler);
-    connect(ui->debugClearButton, &QPushButton::clicked,
-            this, &MainWindow::on_debugClearButton_clicked);
     qInfo() << "KodiGui debug logging started";
 
     const QString buildDate = QStringLiteral(__DATE__);
