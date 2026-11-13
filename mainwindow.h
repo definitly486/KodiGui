@@ -98,6 +98,8 @@ private slots:
 
        void on_pushButton_18_clicked();
 
+    void on_debugClearButton_clicked();
+
    private:
  Ui::MainWindow *ui;
  QProcess *pythonProcess;        // ← вот это
