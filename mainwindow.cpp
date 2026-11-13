@@ -1154,9 +1154,9 @@ void MainWindow::on_pushButton_cleardrm_clicked()
 }
 
 
-void MainWindow::on_pushButton_playdrmts_clicked()
+void MainWindow::on_pushButton_playdrm_clicked()
 {
-    postPlayerOpenFile("drm.ts");
+    postPlayerOpenFile("drm.mp4");
 }
 
 
@@ -1177,11 +1177,6 @@ void MainWindow::on_pushButton_17_clicked()
     postInputAction("back");
 }
 
-
-void MainWindow::on_pushButton_playdrmaarts_clicked()
-{
-    postPlayerOpenFile("drm.aar.ts");
-}
 
 
 void MainWindow::on_pushButton_18_clicked()
