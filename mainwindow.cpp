@@ -1098,23 +1098,84 @@ void MainWindow::on_pushButton_rundrm_clicked()
         return "'" + escaped + "'";
     };
 
-    const QString muxScript = QString::fromUtf8(
-        "set -o pipefail; "
-        "echo 'Ожидание непустого drm.ts...' >> /tmp/drm-mux.log; "
-        "for i in $(seq 1 60); do "
-        "  [ -s \"$HOME/drm.ts\" ] && break; "
-        "  sleep 1; "
-        "done; "
-        "if [ ! -s \"$HOME/drm.ts\" ]; then "
-        "  echo 'ERROR: drm.ts не появился или остался пустым за 60 секунд' >> /tmp/drm-mux.log; "
-        "  exit 1; "
-        "fi; "
-        "echo 'drm.ts найден, запускаю FFmpeg' >> /tmp/drm-mux.log; "
-        "tail -c +1 -F \"$HOME/drm.ts\" | "
-        "ffmpeg -nostdin -hide_banner -loglevel warning -f mpegts -i pipe:0 "
-        "-map 0:v:0? -map 0:a:0? -c copy "
+    // Скрипт сборщика пишем в файл на Pi (избегаем ада с кавычками в bash -c).
+    // Следит за _init_dec.mp4 + *_dec.m4s и периодически собирает fragmented drm.mp4.
+    const QString assembleScriptBody = QString::fromUtf8(
+        "#!/bin/bash\n"
+        "LOG=/tmp/drm-mux.log\n"
+        "ts() { date +%H:%M:%S; }\n"
+        "echo \"[$(ts)] Sbornik segmentov zapuschen\" >> \"$LOG\"\n"
+        "\n"
+        "V=\"\"; A=\"\"\n"
+        "for i in $(seq 1 90); do\n"
+        "  V=$(find \"$HOME/drm\" -maxdepth 1 -type d -name '*avc1*' 2>/dev/null | head -n 1)\n"
+        "  A=$(find \"$HOME/drm\" -maxdepth 1 -type d \\( -name '*audio*' -o -name '*mp4a*' \\) 2>/dev/null | head -n 1)\n"
+        "  if [ -n \"$V\" ] && [ -n \"$A\" ] && "
+        "[ -s \"$V/_init_dec.mp4\" ] && [ -s \"$A/_init_dec.mp4\" ]; then\n"
+        "    echo \"[$(ts)] Found init: V=$V A=$A\" >> \"$LOG\"\n"
+        "    break\n"
+        "  fi\n"
+        "  sleep 1\n"
+        "done\n"
+        "\n"
+        "if [ -z \"$V\" ] || [ -z \"$A\" ] || "
+        "[ ! -s \"$V/_init_dec.mp4\" ] || [ ! -s \"$A/_init_dec.mp4\" ]; then\n"
+        "  echo \"[$(ts)] ERROR: init segments not found in 90s\" >> \"$LOG\"\n"
+        "  exit 1\n"
+        "fi\n"
+        "\n"
+        "for i in $(seq 1 60); do\n"
+        "  vc=$(find \"$V\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
+        "  ac=$(find \"$A\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
+        "  if [ \"$vc\" -ge 2 ] && [ \"$ac\" -ge 2 ]; then\n"
+        "    echo \"[$(ts)] Segments ready: video=$vc audio=$ac\" >> \"$LOG\"\n"
+        "    break\n"
+        "  fi\n"
+        "  sleep 1\n"
+        "done\n"
+        "\n"
+        "LAST_V=0; LAST_A=0\n"
+        "while true; do\n"
+        "  vc=$(find \"$V\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
+        "  ac=$(find \"$A\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
+        "  if [ \"$vc\" -gt \"$LAST_V\" ] || [ \"$ac\" -gt \"$LAST_A\" ]; then\n"
+        "    echo \"[$(ts)] Building: video=$vc audio=$ac\" >> \"$LOG\"\n"
+        "    {\n"
+        "      cat \"$V/_init_dec.mp4\"\n"
+        "      find \"$V\" -maxdepth 1 -name '*_dec.m4s' -printf '%p\\n' | sort -V | while read f; do cat \"$f\"; done\n"
+        "    } > /tmp/drm-video-cur.mp4\n"
+        "    {\n"
+        "      cat \"$A/_init_dec.mp4\"\n"
+        "      find \"$A\" -maxdepth 1 -name '*_dec.m4s' -printf '%p\\n' | sort -V | while read f; do cat \"$f\"; done\n"
+        "    } > /tmp/drm-audio-cur.mp4\n"
+        "    if ffmpeg -y -hide_banner -loglevel error "
+        "-i /tmp/drm-video-cur.mp4 -i /tmp/drm-audio-cur.mp4 "
+        "-map 0:v:0 -map 1:a:0 -c copy "
         "-movflags +empty_moov+default_base_moof+frag_keyframe "
-        "-frag_duration 1000000 -f mp4 \"$HOME/drm.mp4\""
+        "-frag_duration 1000000 "
+        "/tmp/drm-combined-new.mp4 2>>\"$LOG\"; then\n"
+        "      mv -f /tmp/drm-combined-new.mp4 \"$HOME/drm.mp4\"\n"
+        "      echo \"[$(ts)] drm.mp4 updated\" >> \"$LOG\"\n"
+        "      LAST_V=$vc; LAST_A=$ac\n"
+        "    else\n"
+        "      echo \"[$(ts)] WARN: ffmpeg failed\" >> \"$LOG\"\n"
+        "    fi\n"
+        "  fi\n"
+        "  if [ -s \"$HOME/drm_download.pid\" ]; then\n"
+        "    dp=$(cat \"$HOME/drm_download.pid\")\n"
+        "    if ! kill -0 \"$dp\" 2>/dev/null; then\n"
+        "      sleep 5\n"
+        "      vc2=$(find \"$V\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
+        "      ac2=$(find \"$A\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
+        "      if [ \"$vc2\" -eq \"$LAST_V\" ] && [ \"$ac2\" -eq \"$LAST_A\" ]; then\n"
+        "        echo \"[$(ts)] Downloader finished, segments stable - exit\" >> \"$LOG\"\n"
+        "        break\n"
+        "      fi\n"
+        "    fi\n"
+        "  fi\n"
+        "  sleep 3\n"
+        "done\n"
+        "echo \"[$(ts)] Assembler finished\" >> \"$LOG\"\n"
     );
 
     const QString remoteCmd =
@@ -1123,29 +1184,44 @@ void MainWindow::on_pushButton_rundrm_clicked()
         "  old_mux=$(cat \"$HOME/drm_mux.pid\"); "
         "  kill -TERM -- -\"$old_mux\" 2>/dev/null || true; "
         "fi; "
+        "if [ -s \"$HOME/drm_download.pid\" ]; then "
+        "  old_dl=$(cat \"$HOME/drm_download.pid\"); "
+        "  kill -TERM \"$old_dl\" 2>/dev/null || true; "
+        "fi; "
         "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
         "killall -9 ffmpeg 2>/dev/null || true; "
         "sleep 1; "
         "rm -f \"$HOME/drm_mux.pid\" \"$HOME/drm_download.pid\" "
-        "      \"$HOME/drm.mp4\" \"$HOME/drm.ts\" \"$HOME/drm.aar.ts\"; "
+        "      \"$HOME/drm.mp4\" \"$HOME/drm.ts\" \"$HOME/drm.aar.ts\" "
+        "      /tmp/drm-video-cur.mp4 /tmp/drm-audio-cur.mp4 /tmp/drm-combined-new.mp4 "
+        "      /tmp/drm-assemble.sh; "
+        "rm -rf \"$HOME/drm\"; "
+        "mkdir -p \"$HOME/drm\"; "
         ": > /tmp/drm-download.log; "
         ": > /tmp/drm-mux.log; "
-        "touch \"$HOME/drm.ts\"; "
-        // Запускаем загрузчик и сохраняем его PID.
+        // Пишем скрипт сборщика в файл (без проблем с кавычками).
+        "cat > /tmp/drm-assemble.sh << 'ASSEMBLE_EOF'\n" +
+        assembleScriptBody +
+        "ASSEMBLE_EOF\n"
+        "chmod +x /tmp/drm-assemble.sh; "
+        // Загрузчик: расшифрованные сегменты в $HOME/drm (без live-pipe-mux).
         "nohup N_m3u8DL-RE " + shellQuote(input) +
-        " -M format=mp4 --key " + shellQuote(keydrm) +
-        " -sv worst --save-name drm --save-dir \"$HOME\" --live-pipe-mux "
+        " --key " + shellQuote(keydrm) +
+        " -sv worst "
+        "--save-name drm --save-dir \"$HOME/drm\" "
+        "--mp4-real-time-decryption "
+        "--live-keep-segments "
         "--select-audio id='audio_aar=128000' "
         "> /tmp/drm-download.log 2>&1 < /dev/null & "
         "echo $! > \"$HOME/drm_download.pid\"; "
-        // Конвертер ждёт появления данных, затем следит за пересозданием TS через tail -F.
-        "nohup setsid bash -c " + shellQuote(muxScript) +
-        " > /tmp/drm-mux.log 2>&1 < /dev/null & "
+        // Сборщик сегментов → fragmented drm.mp4
+        "nohup setsid /tmp/drm-assemble.sh "
+        "> /tmp/drm-mux.log 2>&1 < /dev/null & "
         "echo $! > \"$HOME/drm_mux.pid\"";
 
     runCommand("ssh", {user, remoteCmd});
 
-    // Проверяем появление непустого drm.mp4 и состояние группы FFmpeg.
+    // Проверяем появление непустого drm.mp4 и состояние группы сборщика.
     if (drmFileCheckTimer)
         drmFileCheckTimer->stop();
     if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning)
@@ -1163,12 +1239,14 @@ void MainWindow::on_pushButton_rundrm_clicked()
                 if (drmFileCheckTimer)
                     drmFileCheckTimer->stop();
                 QMessageBox::information(this, "DRM",
-                    "Файл drm.mp4 появился на устройстве. Можно нажать Play.");
+                    "Файл drm.mp4 появился на устройстве.\n"
+                    "Можно нажать Play — воспроизведение начнётся\n"
+                    "до окончания загрузки трансляции.");
             } else if (output.contains("DRM_MUX_FAILED")) {
                 if (drmFileCheckTimer)
                     drmFileCheckTimer->stop();
                 QMessageBox::warning(this, "DRM",
-                    "FFmpeg завершился до создания drm.mp4.\n\n"
+                    "Сборщик завершился до создания drm.mp4.\n\n"
                     "Последние строки журнала:\n" + output);
             }
         });
@@ -1182,10 +1260,10 @@ void MainWindow::on_pushButton_rundrm_clicked()
                 return;
 
             // Ограничиваем ожидание, чтобы при ошибке SSH/загрузчика не проверять бесконечно.
-            if (++drmFileCheckAttempts > 60) {
+            if (++drmFileCheckAttempts > 80) {
                 drmFileCheckTimer->stop();
                 QMessageBox::warning(this, "DRM",
-                    "За 90 секунд файл drm.mp4 не появился.\n"
+                    "За ~2 минуты файл drm.mp4 не появился.\n"
                     "Проверьте /tmp/drm-download.log и /tmp/drm-mux.log на Raspberry Pi.");
                 return;
             }
@@ -1199,7 +1277,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
                     "  p=$(cat \"$HOME/drm_mux.pid\"); "
                     "  if ! kill -0 -- -\"$p\" 2>/dev/null; then "
                     "    echo DRM_MUX_FAILED; "
-                    "    tail -n 20 /tmp/drm-mux.log; "
+                    "    tail -n 25 /tmp/drm-mux.log; "
                     "  fi; "
                     "fi"
                 });
@@ -1209,7 +1287,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
     drmFileCheckAttempts = 0;
     drmFileCheckTimer->start();
 
-    qDebug() << "DRM: N_m3u8DL-RE запущен в фоне";
+    qDebug() << "DRM: N_m3u8DL-RE + сегментный сборщик запущены";
 }
 
 
@@ -1253,15 +1331,21 @@ void MainWindow::on_pushButton_kill_m3u8DL_clicked()
     if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning)
         drmFileCheckProcess->kill();
 
-    // Остановка загрузчика и всей группы tail + FFmpeg на удалённом устройстве.
+    // Остановка загрузчика и сборщика сегментов на удалённом устройстве.
     runCommand("ssh", {"pi@192.168.8.45",
         "if [ -s \"$HOME/drm_mux.pid\" ]; then "
         "  p=$(cat \"$HOME/drm_mux.pid\"); "
         "  kill -TERM -- -\"$p\" 2>/dev/null || true; "
         "fi; "
+        "if [ -s \"$HOME/drm_download.pid\" ]; then "
+        "  p=$(cat \"$HOME/drm_download.pid\"); "
+        "  kill -TERM \"$p\" 2>/dev/null || true; "
+        "fi; "
         "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
         "killall -9 ffmpeg 2>/dev/null || true; "
-        "rm -f \"$HOME/drm_mux.pid\" \"$HOME/drm_download.pid\""});
+        "rm -f \"$HOME/drm_mux.pid\" \"$HOME/drm_download.pid\" "
+        "      /tmp/drm-video-cur.mp4 /tmp/drm-audio-cur.mp4 /tmp/drm-combined-new.mp4 "
+        "      /tmp/drm-assemble.sh"});
 }
 
 
