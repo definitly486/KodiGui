@@ -1093,13 +1093,15 @@ void MainWindow::on_pushButton_rundrm_clicked()
     // 1. Убиваем старый процесс
     sshKillProcess("N_m3u8DL-RE");
 
-    // 2. Чистим старые файлы (одна SSH-команда вместо двух)
-    runCommand("ssh", {user, "rm -rf $HOME/drm.ts $HOME/drm"});
+    // 2. Удаляем результаты предыдущей записи.
+    runCommand("ssh", {user, "rm -rf $HOME/drm $HOME/drm.*"});
 
-    // 3. Запускаем N_m3u8DL-RE в фоне на Pi
+    // 3. Запускаем запись с обычным real-time merge.
+    // --live-pipe-mux всегда создаёт TS, поэтому здесь он не используется.
+    // После остановки записи N_m3u8DL-RE объединит дорожки в drm.mp4.
     const QString remoteCmd = QString(
         "nohup N_m3u8DL-RE %1 -M format=mp4 --key %2 -sv worst "
-        "--save-name drm --save-dir $HOME --live-pipe-mux "
+        "--save-name drm --save-dir $HOME --live-real-time-merge "
         "--select-audio id='audio_aar=128000' "
         "> /dev/null 2>&1 &"
     ).arg(input, keydrm);
