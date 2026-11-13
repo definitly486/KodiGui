@@ -1124,6 +1124,42 @@ void MainWindow::on_pushButton_rundrm_clicked()
 
     runCommand("ssh", {user, remoteCmd});
 
+    // Проверяем появление непустого drm.mp4 на удалённом устройстве.
+    // Проверка выполняется асинхронно, чтобы не блокировать интерфейс.
+    if (drmFileCheckTimer) {
+        drmFileCheckTimer->stop();
+    }
+    if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning) {
+        drmFileCheckProcess->kill();
+    }
+    if (!drmFileCheckProcess) {
+        drmFileCheckProcess = new QProcess(this);
+        connect(drmFileCheckProcess,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [this](int exitCode, QProcess::ExitStatus) {
+            const QString output = QString::fromUtf8(drmFileCheckProcess->readAllStandardOutput());
+            if (exitCode == 0 && output.contains("DRM_MP4_READY")) {
+                if (drmFileCheckTimer)
+                    drmFileCheckTimer->stop();
+                QMessageBox::information(this, "DRM",
+                                         "Файл drm.mp4 появился на устройстве. Можно нажать Play.");
+            }
+        });
+    }
+    if (!drmFileCheckTimer) {
+        drmFileCheckTimer = new QTimer(this);
+        drmFileCheckTimer->setInterval(1000);
+        connect(drmFileCheckTimer, &QTimer::timeout, this, [this]() {
+            if (drmFileCheckProcess->state() == QProcess::NotRunning) {
+                drmFileCheckProcess->start("ssh", {
+                    "pi@192.168.8.45",
+                    "test -s \"$HOME/drm.mp4\" && echo DRM_MP4_READY"
+                });
+            }
+        });
+    }
+    drmFileCheckTimer->start();
+
     qDebug() << "DRM: N_m3u8DL-RE запущен в фоне";
 }
 
@@ -1163,6 +1199,11 @@ void MainWindow::on_pushButton_playdrm_clicked()
 
 void MainWindow::on_pushButton_kill_m3u8DL_clicked()
 {
+    if (drmFileCheckTimer)
+        drmFileCheckTimer->stop();
+    if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning)
+        drmFileCheckProcess->kill();
+
     sshKillProcess("N_m3u8DL-RE");
     // Останавливаем группу процессов tail + FFmpeg, создающую drm.mp4.
     runCommand("ssh", {"pi@192.168.8.45",
