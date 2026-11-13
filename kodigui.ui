@@ -693,9 +693,20 @@
      <attribute name="title">
       <string>Debug</string>
      </attribute>
+     <widget class="QCheckBox" name="debugEnableCheckBox">
+      <property name="geometry">
+       <rect><x>10</x><y>10</y><width>250</width><height>22</height></rect>
+      </property>
+      <property name="text">
+       <string>Включить вывод информации</string>
+      </property>
+      <property name="checked">
+       <bool>true</bool>
+      </property>
+     </widget>
      <widget class="QTextEdit" name="debugTextEdit">
       <property name="geometry">
-       <rect><x>10</x><y>10</y><width>571</width><height>331</height></rect>
+       <rect><x>10</x><y>40</y><width>571</width><height>301</height></rect>
       </property>
       <property name="readOnly"><bool>true</bool></property>
       <property name="lineWrapMode"><enum>QTextEdit::NoWrap</enum></property>
