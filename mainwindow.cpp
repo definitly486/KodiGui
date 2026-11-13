@@ -93,8 +93,8 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , pythonProcess(new QProcess(this))        // ← обязательно this!
-    , manager(new QNetworkAccessManager(this))  // <-- создаём здесь!
     , kodidlpProcess(new QProcess(this))
+    , manager(new QNetworkAccessManager(this))
 {
     ui->setupUi(this);
 
@@ -172,6 +172,8 @@ MainWindow::MainWindow(QWidget *parent)
                     .arg(kodidlpProcess->errorString()));
         }
     });
+
+
 }
 
 MainWindow::~MainWindow()
@@ -1131,7 +1133,7 @@ void MainWindow::on_getonairnow_clicked()
 
 void MainWindow::on_playdrm_17_clicked()
 {
-    postPlayerOpenFile("drm.mp4");
+    postPlayerOpenFile("drm/hls/master.m3u8");
 }
 
 void MainWindow::on_stopdrm_18_clicked()
@@ -1195,85 +1197,110 @@ void MainWindow::on_pushButton_rundrm_clicked()
         return "'" + escaped + "'";
     };
 
-    // Скрипт сборщика пишем в файл на Pi (избегаем ада с кавычками в bash -c).
-    // Следит за _init_dec.mp4 + *_dec.m4s и периодически собирает fragmented drm.mp4.
-    const QString assembleScriptBody = QString::fromUtf8(
-        "#!/bin/bash\n"
-        "LOG=/tmp/drm-mux.log\n"
-        "ts() { date +%H:%M:%S; }\n"
-        "echo \"[$(ts)] Sbornik segmentov zapuschen\" >> \"$LOG\"\n"
-        "\n"
-        "V=\"\"; A=\"\"\n"
-        "for i in $(seq 1 90); do\n"
-        "  V=$(find \"$HOME/drm\" -maxdepth 1 -type d -name '*avc1*' 2>/dev/null | head -n 1)\n"
-        "  A=$(find \"$HOME/drm\" -maxdepth 1 -type d \\( -name '*audio*' -o -name '*mp4a*' \\) 2>/dev/null | head -n 1)\n"
-        "  if [ -n \"$V\" ] && [ -n \"$A\" ] && "
-        "[ -s \"$V/_init_dec.mp4\" ] && [ -s \"$A/_init_dec.mp4\" ]; then\n"
-        "    echo \"[$(ts)] Found init: V=$V A=$A\" >> \"$LOG\"\n"
-        "    break\n"
-        "  fi\n"
-        "  sleep 1\n"
-        "done\n"
-        "\n"
-        "if [ -z \"$V\" ] || [ -z \"$A\" ] || "
-        "[ ! -s \"$V/_init_dec.mp4\" ] || [ ! -s \"$A/_init_dec.mp4\" ]; then\n"
-        "  echo \"[$(ts)] ERROR: init segments not found in 90s\" >> \"$LOG\"\n"
-        "  exit 1\n"
-        "fi\n"
-        "\n"
-        "for i in $(seq 1 60); do\n"
-        "  vc=$(find \"$V\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
-        "  ac=$(find \"$A\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
-        "  if [ \"$vc\" -ge 2 ] && [ \"$ac\" -ge 2 ]; then\n"
-        "    echo \"[$(ts)] Segments ready: video=$vc audio=$ac\" >> \"$LOG\"\n"
-        "    break\n"
-        "  fi\n"
-        "  sleep 1\n"
-        "done\n"
-        "\n"
-        "LAST_V=0; LAST_A=0\n"
-        "while true; do\n"
-        "  vc=$(find \"$V\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
-        "  ac=$(find \"$A\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
-        "  if [ \"$vc\" -gt \"$LAST_V\" ] || [ \"$ac\" -gt \"$LAST_A\" ]; then\n"
-        "    echo \"[$(ts)] Building: video=$vc audio=$ac\" >> \"$LOG\"\n"
-        "    {\n"
-        "      cat \"$V/_init_dec.mp4\"\n"
-        "      find \"$V\" -maxdepth 1 -name '*_dec.m4s' -printf '%p\\n' | sort -V | while read f; do cat \"$f\"; done\n"
-        "    } > /tmp/drm-video-cur.mp4\n"
-        "    {\n"
-        "      cat \"$A/_init_dec.mp4\"\n"
-        "      find \"$A\" -maxdepth 1 -name '*_dec.m4s' -printf '%p\\n' | sort -V | while read f; do cat \"$f\"; done\n"
-        "    } > /tmp/drm-audio-cur.mp4\n"
-        "    if ffmpeg -y -hide_banner -loglevel error "
-        "-i /tmp/drm-video-cur.mp4 -i /tmp/drm-audio-cur.mp4 "
-        "-map 0:v:0 -map 1:a:0 -c copy "
-        "-movflags +empty_moov+default_base_moof+frag_keyframe "
-        "-frag_duration 1000000 "
-        "/tmp/drm-combined-new.mp4 2>>\"$LOG\"; then\n"
-        "      mv -f /tmp/drm-combined-new.mp4 \"$HOME/drm.mp4\"\n"
-        "      echo \"[$(ts)] drm.mp4 updated\" >> \"$LOG\"\n"
-        "      LAST_V=$vc; LAST_A=$ac\n"
-        "    else\n"
-        "      echo \"[$(ts)] WARN: ffmpeg failed\" >> \"$LOG\"\n"
-        "    fi\n"
-        "  fi\n"
-        "  if [ -s \"$HOME/drm_download.pid\" ]; then\n"
-        "    dp=$(cat \"$HOME/drm_download.pid\")\n"
-        "    if ! kill -0 \"$dp\" 2>/dev/null; then\n"
-        "      sleep 5\n"
-        "      vc2=$(find \"$V\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
-        "      ac2=$(find \"$A\" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)\n"
-        "      if [ \"$vc2\" -eq \"$LAST_V\" ] && [ \"$ac2\" -eq \"$LAST_A\" ]; then\n"
-        "        echo \"[$(ts)] Downloader finished, segments stable - exit\" >> \"$LOG\"\n"
-        "        break\n"
-        "      fi\n"
-        "    fi\n"
-        "  fi\n"
-        "  sleep 3\n"
-        "done\n"
-        "echo \"[$(ts)] Assembler finished\" >> \"$LOG\"\n"
-    );
+    // Dynamic HLS publisher: publishes original decrypted fMP4 fragments without remuxing.
+    const QString assembleScriptBody = QString::fromUtf8(R"DRM_HLS_SCRIPT(
+#!/bin/bash
+set -u
+LOG=/tmp/drm-mux.log
+ts() { date +%H:%M:%S; }
+echo "[$(ts)] Dynamic HLS publisher started" >> "$LOG"
+V=""; A=""
+for i in $(seq 1 90); do
+  V=$(find "$HOME/drm" -mindepth 1 -maxdepth 1 -type d -name '*avc1*' 2>/dev/null | head -n 1)
+  A=$(find "$HOME/drm" -mindepth 1 -maxdepth 1 -type d \( -name '*audio*' -o -name '*mp4a*' \) 2>/dev/null | head -n 1)
+  if [ -n "$V" ] && [ -n "$A" ] && [ -s "$V/_init_dec.mp4" ] && [ -s "$A/_init_dec.mp4" ]; then break; fi
+  sleep 1
+done
+if [ -z "$V" ] || [ -z "$A" ] || [ ! -s "$V/_init_dec.mp4" ] || [ ! -s "$A/_init_dec.mp4" ]; then
+  echo "[$(ts)] ERROR: decrypted init segments not found" >> "$LOG"; exit 1
+fi
+mkdir -p "$HOME/drm/hls"
+echo "[$(ts)] Found video=$V audio=$A" >> "$LOG"
+LAST_V=0; LAST_A=0
+while true; do
+  dp=""
+  [ -s "$HOME/drm_download.pid" ] && dp=$(cat "$HOME/drm_download.pid" 2>/dev/null || true)
+  finished=0
+  if [ -z "$dp" ] || ! kill -0 "$dp" 2>/dev/null; then finished=1; fi
+  python3 - "$V" "$A" "$HOME/drm" "$finished" <<'PY_BUILDER'
+import glob, math, os, pathlib, sys, tempfile, time
+vdir, adir, root, finished = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3]), sys.argv[4] == '1'
+out = root / 'hls'; out.mkdir(parents=True, exist_ok=True)
+def files(directory):
+    found = glob.glob(os.path.join(directory, '*_dec.m4s'))
+    return sorted(found, key=lambda p: int(os.path.basename(p).split('_', 1)[0]))
+def stable(path):
+    try:
+        a = os.stat(path); time.sleep(0.12); b = os.stat(path)
+        return a.st_size > 0 and a.st_size == b.st_size and a.st_mtime_ns == b.st_mtime_ns
+    except OSError: return False
+def atomic_write(path, data):
+    fd, tmp = tempfile.mkstemp(prefix=path.name + '.', suffix='.tmp', dir=str(path.parent))
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(data); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        try: os.unlink(tmp)
+        except FileNotFoundError: pass
+vf, af = files(vdir), files(adir)
+# Match the independent track timestamps, not merely array positions.
+# In this stream video ticks are 1/600 s and audio ticks are 1/48000 s.
+audio_by_time = [(int(os.path.basename(p).split('_', 1)[0]) / 48000.0, p) for p in af]
+pairs = []
+for vp in vf:
+    vt = int(os.path.basename(vp).split('_', 1)[0]) / 600.0
+    if not audio_by_time: continue
+    best_index = min(range(len(audio_by_time)), key=lambda i: abs(audio_by_time[i][0] - vt))
+    at, ap = audio_by_time[best_index]
+    if abs(at - vt) <= 0.10:
+        pairs.append((vt, vp, ap))
+        audio_by_time.pop(best_index)
+if len(pairs) < 2: sys.exit(0)
+# Never expose the newest pair until both corresponding files stop growing.
+while len(pairs) >= 2 and (not stable(pairs[-1][1]) or not stable(pairs[-1][2])):
+    pairs.pop()
+if len(pairs) < 2: sys.exit(0)
+window = 30
+start = max(0, len(pairs) - window)
+selected = pairs[start:]
+def make_playlist(track_index, directory, done):
+    durations = []
+    for i, pair in enumerate(selected):
+        if start + i + 1 < len(pairs): duration = pairs[start+i+1][0] - pair[0]
+        elif len(selected) > 1: duration = selected[-1][0] - selected[-2][0]
+        else: duration = 3.2
+        if not (0.1 <= duration <= 30): duration = 3.2
+        durations.append(duration)
+    target = max(1, math.ceil(max(durations)))
+    rel_dir = os.path.relpath(directory, out)
+    lines = ['#EXTM3U','#EXT-X-VERSION:7',f'#EXT-X-TARGETDURATION:{target}',
+             f'#EXT-X-MEDIA-SEQUENCE:{start}',f'#EXT-X-MAP:URI="{rel_dir}/_init_dec.mp4"']
+    for pair, duration in zip(selected, durations):
+        name = os.path.basename(pair[track_index])
+        lines += [f'#EXTINF:{duration:.3f},', f'{rel_dir}/{name}']
+    if done: lines.append('#EXT-X-ENDLIST')
+    return '\n'.join(lines)+'\n'
+atomic_write(out/'video.m3u8', make_playlist(1, pathlib.Path(vdir), finished))
+atomic_write(out/'audio.m3u8', make_playlist(2, pathlib.Path(adir), finished))
+master = ('#EXTM3U\n#EXT-X-VERSION:7\n'
+          '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="AAC",DEFAULT=YES,AUTOSELECT=YES,URI="audio.m3u8"\n'
+          '#EXT-X-STREAM-INF:BANDWIDTH=700000,CODECS="avc1.4D401E,mp4a.40.2",AUDIO="audio"\nvideo.m3u8\n')
+atomic_write(out/'master.m3u8',master)
+print(f'published {len(pairs)} timestamp-matched pairs, finished={finished}')
+PY_BUILDER
+  rc=$?
+  if [ "$rc" -ne 0 ]; then echo "[$(ts)] ERROR: playlist publisher exit=$rc" >> "$LOG"; fi
+  vc=$(find "$V" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)
+  ac=$(find "$A" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)
+  if [ "$vc" -ne "$LAST_V" ] || [ "$ac" -ne "$LAST_A" ]; then
+    echo "[$(ts)] HLS updated: video=$vc audio=$ac" >> "$LOG"; LAST_V=$vc; LAST_A=$ac
+  fi
+  if [ "$finished" -eq 1 ]; then echo "[$(ts)] Downloader finished; final HLS playlist published" >> "$LOG"; break; fi
+  sleep 1
+done
+echo "[$(ts)] HLS publisher finished" >> "$LOG"
+)DRM_HLS_SCRIPT");
 
     const QString remoteCmd =
         // Останавливаем старые процессы, затем только после этого удаляем старые файлы.
@@ -1286,11 +1313,9 @@ void MainWindow::on_pushButton_rundrm_clicked()
         "  kill -TERM \"$old_dl\" 2>/dev/null || true; "
         "fi; "
         "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
-        "killall -9 ffmpeg 2>/dev/null || true; "
         "sleep 1; "
         "rm -f \"$HOME/drm_mux.pid\" \"$HOME/drm_download.pid\" "
-        "      \"$HOME/drm.mp4\" \"$HOME/drm.ts\" \"$HOME/drm.aar.ts\" "
-        "      /tmp/drm-video-cur.mp4 /tmp/drm-audio-cur.mp4 /tmp/drm-combined-new.mp4 "
+        "      \"$HOME/drm.mp4\" \"$HOME/master.m3u8\" \"$HOME/drm.ts\" \"$HOME/drm.aar.ts\" "
         "      /tmp/drm-assemble.sh; "
         "rm -rf \"$HOME/drm\"; "
         "mkdir -p \"$HOME/drm\"; "
@@ -1311,7 +1336,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
         "--select-audio id='audio_aar=128000' "
         "> /tmp/drm-download.log 2>&1 < /dev/null & "
         "echo $! > \"$HOME/drm_download.pid\"; "
-        // Сборщик сегментов → fragmented drm.mp4
+        // Публикатор динамических HLS-плейлистов → drm/hls/master.m3u8
         "nohup setsid /tmp/drm-assemble.sh "
         "> /tmp/drm-mux.log 2>&1 < /dev/null & "
         "echo $! > \"$HOME/drm_mux.pid\"";
@@ -1339,14 +1364,14 @@ void MainWindow::on_pushButton_rundrm_clicked()
                 if (drmFileCheckTimer)
                     drmFileCheckTimer->stop();
                 QMessageBox::information(this, "DRM",
-                    "Файл drm.mp4 появился на устройстве.\n"
-                    "Можно нажать Play — воспроизведение начнётся\n"
-                    "до окончания загрузки трансляции.");
+                    "Динамический HLS-плейлист готов.\n"
+                    "Нажмите Play — Kodi откроет поток один раз\n"
+                    "и будет получать новые сегменты по мере загрузки.");
             } else if (output.contains("DRM_MUX_FAILED")) {
                 if (drmFileCheckTimer)
                     drmFileCheckTimer->stop();
                 QMessageBox::warning(this, "DRM",
-                    "Сборщик завершился до создания drm.mp4.\n\n"
+                    "Публикатор HLS завершился до создания плейлиста.\n\n"
                     "Последние строки журнала:\n" + output);
             }
         });
@@ -1363,7 +1388,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
             if (++drmFileCheckAttempts > 80) {
                 drmFileCheckTimer->stop();
                 QMessageBox::warning(this, "DRM",
-                    "За ~2 минуты файл drm.mp4 не появился.\n"
+                    "За ~2 минуты HLS-плейлист не появился.\n"
                     "Проверьте /tmp/drm-download.log и /tmp/drm-mux.log на Raspberry Pi.");
                 return;
             }
@@ -1372,7 +1397,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
                 qInfo() << "Checking remote DRM output and assembler status";
                 drmFileCheckProcess->start("ssh", {
                     "pi@192.168.8.45",
-                    "if [ -s \"$HOME/drm.mp4\" ]; then "
+                    "if [ -s \"$HOME/drm/hls/master.m3u8\" ]; then "
                     "  echo DRM_MP4_READY; "
                     "elif [ -s \"$HOME/drm_mux.pid\" ]; then "
                     "  p=$(cat \"$HOME/drm_mux.pid\"); "
@@ -1388,7 +1413,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
     drmFileCheckAttempts = 0;
     drmFileCheckTimer->start();
 
-    qDebug() << "DRM: N_m3u8DL-RE + сегментный сборщик запущены";
+    qDebug() << "DRM: N_m3u8DL-RE + dynamic HLS publisher started";
 }
 
 
@@ -1421,7 +1446,7 @@ void MainWindow::on_pushButton_cleardrm_clicked()
 
 void MainWindow::on_pushButton_playdrm_clicked()
 {
-    postPlayerOpenFile("drm.mp4");
+    postPlayerOpenFile("drm/hls/master.m3u8");
 }
 
 
@@ -1443,9 +1468,7 @@ void MainWindow::on_pushButton_kill_m3u8DL_clicked()
         "  kill -TERM \"$p\" 2>/dev/null || true; "
         "fi; "
         "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
-        "killall -9 ffmpeg 2>/dev/null || true; "
         "rm -f \"$HOME/drm_mux.pid\" \"$HOME/drm_download.pid\" "
-        "      /tmp/drm-video-cur.mp4 /tmp/drm-audio-cur.mp4 /tmp/drm-combined-new.mp4 "
         "      /tmp/drm-assemble.sh"});
 }
 

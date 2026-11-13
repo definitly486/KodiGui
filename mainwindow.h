@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QProcess>
+#include <QTimer>
 #include <QString>
 #include <QNetworkAccessManager>  // <-- обязательно для QNetworkAccessManager
 #include <QNetworkReply>
