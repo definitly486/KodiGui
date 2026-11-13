@@ -102,6 +102,8 @@ private slots:
  Ui::MainWindow *ui;
  QProcess *pythonProcess;        // ← вот это
  QProcess *kodidlpProcess;
+ QTimer *drmFileCheckTimer = nullptr;
+ QProcess *drmFileCheckProcess = nullptr;
    QNetworkAccessManager *manager;
     int rpcId = 1;
 
