@@ -1237,7 +1237,7 @@ def files(directory):
     # N_m3u8DL-RE may append _dec to decrypted video fragments while
     # audio fragments can retain the plain numeric .m4s filename.
     found = glob.glob(os.path.join(directory, '*.m4s'))
-    return sorted(found, key=lambda p: int(os.path.basename(p).split('_', 1)[0]))
+    return sorted(found, key=lambda p: int(os.path.splitext(os.path.basename(p))[0].split('_', 1)[0]))
 def stable(path):
     try:
         a = os.stat(path); time.sleep(0.12); b = os.stat(path)
@@ -1255,7 +1255,7 @@ def atomic_write(path, data):
 vf, af = files(vdir), files(adir)
 # Match the independent track timestamps, not merely array positions.
 # In this stream video ticks are 1/600 s and audio ticks are 1/48000 s.
-audio_by_time = [(int(os.path.basename(p).split('_', 1)[0]) / 48000.0, p) for p in af]
+audio_by_time = [(int(os.path.splitext(os.path.basename(p))[0].split('_', 1)[0]) / 48000.0, p) for p in af]
 pairs = []
 for vp in vf:
     vt = int(os.path.basename(vp).split('_', 1)[0]) / 600.0
