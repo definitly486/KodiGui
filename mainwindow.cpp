@@ -1208,14 +1208,21 @@ V=""; A=""
 for i in $(seq 1 90); do
   V=$(find "$HOME/drm" -mindepth 1 -maxdepth 1 -type d -name '*avc1*' 2>/dev/null | head -n 1)
   A=$(find "$HOME/drm" -mindepth 1 -maxdepth 1 -type d \( -name '*audio*' -o -name '*mp4a*' \) 2>/dev/null | head -n 1)
-  if [ -n "$V" ] && [ -n "$A" ] && [ -s "$V/_init_dec.mp4" ] && [ -s "$A/_init_dec.mp4" ]; then break; fi
+  VI=""; AI=""
+  for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
+    if [ -n "$V" ] && [ -s "$candidate" ]; then VI="$candidate"; break; fi
+  done
+  for candidate in "$A/_init_dec.mp4" "$A/_init.mp4"; do
+    if [ -n "$A" ] && [ -s "$candidate" ]; then AI="$candidate"; break; fi
+  done
+  if [ -n "$VI" ] && [ -n "$AI" ]; then break; fi
   sleep 1
 done
-if [ -z "$V" ] || [ -z "$A" ] || [ ! -s "$V/_init_dec.mp4" ] || [ ! -s "$A/_init_dec.mp4" ]; then
-  echo "[$(ts)] ERROR: decrypted init segments not found" >> "$LOG"; exit 1
+if [ -z "$V" ] || [ -z "$A" ] || [ -z "$VI" ] || [ -z "$AI" ]; then
+  echo "[$(ts)] ERROR: init segments not found (video=$V audio=$A)" >> "$LOG"; exit 1
 fi
 mkdir -p "$HOME/drm/hls"
-echo "[$(ts)] Found video=$V audio=$A" >> "$LOG"
+echo "[$(ts)] Found video=$V init=$(basename "$VI"); audio=$A init=$(basename "$AI")" >> "$LOG"
 LAST_V=0; LAST_A=0
 while true; do
   dp=""
@@ -1227,7 +1234,9 @@ import glob, math, os, pathlib, sys, tempfile, time
 vdir, adir, root, finished = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3]), sys.argv[4] == '1'
 out = root / 'hls'; out.mkdir(parents=True, exist_ok=True)
 def files(directory):
-    found = glob.glob(os.path.join(directory, '*_dec.m4s'))
+    # N_m3u8DL-RE may append _dec to decrypted video fragments while
+    # audio fragments can retain the plain numeric .m4s filename.
+    found = glob.glob(os.path.join(directory, '*.m4s'))
     return sorted(found, key=lambda p: int(os.path.basename(p).split('_', 1)[0]))
 def stable(path):
     try:
@@ -1271,6 +1280,10 @@ if visible_end < minimum_visible: sys.exit(0)
 start = max(0, visible_end - LIVE_WINDOW_SEGMENTS)
 selected = pairs[start:visible_end]
 def make_playlist(track_index, directory, done):
+    init_candidates = [directory / '_init_dec.mp4', directory / '_init.mp4']
+    init_path = next((p for p in init_candidates if p.is_file() and p.stat().st_size > 0), None)
+    if init_path is None:
+        raise RuntimeError(f'init segment missing in {directory}')
     durations = []
     for i, pair in enumerate(selected):
         absolute_index = start + i
@@ -1284,7 +1297,7 @@ def make_playlist(track_index, directory, done):
     target = max(1, math.ceil(max(durations)))
     rel_dir = os.path.relpath(directory, out)
     lines = ['#EXTM3U','#EXT-X-VERSION:7',f'#EXT-X-TARGETDURATION:{target}',
-             f'#EXT-X-MEDIA-SEQUENCE:{start}',f'#EXT-X-MAP:URI="{rel_dir}/_init_dec.mp4"']
+             f'#EXT-X-MEDIA-SEQUENCE:{start}',f'#EXT-X-MAP:URI="{rel_dir}/{init_path.name}"']
     for pair, duration in zip(selected, durations):
         name = os.path.basename(pair[track_index])
         lines += [f'#EXTINF:{duration:.3f},', f'{rel_dir}/{name}']
@@ -1300,8 +1313,8 @@ print(f'published {len(selected)} pairs; held back {0 if finished else min(LIVE_
 PY_BUILDER
   rc=$?
   if [ "$rc" -ne 0 ]; then echo "[$(ts)] ERROR: playlist publisher exit=$rc" >> "$LOG"; fi
-  vc=$(find "$V" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)
-  ac=$(find "$A" -maxdepth 1 -name '*_dec.m4s' 2>/dev/null | wc -l)
+  vc=$(find "$V" -maxdepth 1 -name '*.m4s' 2>/dev/null | wc -l)
+  ac=$(find "$A" -maxdepth 1 -name '*.m4s' 2>/dev/null | wc -l)
   if [ "$vc" -ne "$LAST_V" ] || [ "$ac" -ne "$LAST_A" ]; then
     echo "[$(ts)] HLS updated: video=$vc audio=$ac" >> "$LOG"; LAST_V=$vc; LAST_A=$ac
   fi
