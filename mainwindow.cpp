@@ -1260,14 +1260,23 @@ if len(pairs) < 2: sys.exit(0)
 # Never expose the newest pair until both corresponding files stop growing.
 while len(pairs) >= 2 and (not stable(pairs[-1][1]) or not stable(pairs[-1][2])):
     pairs.pop()
-if len(pairs) < 2: sys.exit(0)
-window = 30
-start = max(0, len(pairs) - window)
-selected = pairs[start:]
+# Keep a safety margin behind the downloader's live edge. Kodi reads only
+# published segments, so the newest three complete pairs act as a live buffer.
+LIVE_HOLD_BACK_SEGMENTS = 3
+LIVE_WINDOW_SEGMENTS = 90
+STARTUP_BUFFER_SEGMENTS = 5
+visible_end = len(pairs) if finished else max(0, len(pairs) - LIVE_HOLD_BACK_SEGMENTS)
+minimum_visible = 2 if finished else STARTUP_BUFFER_SEGMENTS
+if visible_end < minimum_visible: sys.exit(0)
+start = max(0, visible_end - LIVE_WINDOW_SEGMENTS)
+selected = pairs[start:visible_end]
 def make_playlist(track_index, directory, done):
     durations = []
     for i, pair in enumerate(selected):
-        if start + i + 1 < len(pairs): duration = pairs[start+i+1][0] - pair[0]
+        absolute_index = start + i
+        # The first hidden pair supplies the duration of the last published
+        # segment, keeping audio and video playlist timelines aligned.
+        if absolute_index + 1 < len(pairs): duration = pairs[absolute_index+1][0] - pair[0]
         elif len(selected) > 1: duration = selected[-1][0] - selected[-2][0]
         else: duration = 3.2
         if not (0.1 <= duration <= 30): duration = 3.2
@@ -1287,7 +1296,7 @@ master = ('#EXTM3U\n#EXT-X-VERSION:7\n'
           '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="AAC",DEFAULT=YES,AUTOSELECT=YES,URI="audio.m3u8"\n'
           '#EXT-X-STREAM-INF:BANDWIDTH=700000,CODECS="avc1.4D401E,mp4a.40.2",AUDIO="audio"\nvideo.m3u8\n')
 atomic_write(out/'master.m3u8',master)
-print(f'published {len(pairs)} timestamp-matched pairs, finished={finished}')
+print(f'published {len(selected)} pairs; held back {0 if finished else min(LIVE_HOLD_BACK_SEGMENTS, len(pairs))}; total matched={len(pairs)}, finished={finished}')
 PY_BUILDER
   rc=$?
   if [ "$rc" -ne 0 ]; then echo "[$(ts)] ERROR: playlist publisher exit=$rc" >> "$LOG"; fi
