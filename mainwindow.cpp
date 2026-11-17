@@ -673,7 +673,7 @@ void MainWindow::on_pushButton_7_clicked()
         if(!safeThis) return;
 
         // 3️⃣ Асинхронный SFTP upload
-        QtConcurrent::run([safeThis, filePath]() {
+        [[maybe_unused]] auto uploadFuture = QtConcurrent::run([safeThis, filePath]() {
             if (!uploadFileViaSftp(filePath, "/var/www/html/list.m3u"))
                 return;
 
@@ -1038,7 +1038,7 @@ void MainWindow::on_pushButton_16_clicked()
     rpc("Player.Stop", QJsonObject{{"playerid", 1}}, "Player.Stop",
         [safeThis, filePath, disablePvr](const QJsonObject &) {
             if (!safeThis) return;
-            QtConcurrent::run([safeThis, filePath, disablePvr]() {
+            [[maybe_unused]] auto uploadFuture = QtConcurrent::run([safeThis, filePath, disablePvr]() {
                 if (!uploadFileViaSftp(filePath, "/var/www/html/list.m3u")) {
                     qWarning() << "Match TV: SFTP upload failed, aborting";
                     return;
@@ -1442,7 +1442,7 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
     if (!drmFileCheckTimer) {
         drmFileCheckTimer = new QTimer(this);
         drmFileCheckTimer->setInterval(1500);
-        connect(drmFileCheckTimer, &QTimer::timeout, this, [this]() {
+        connect(drmFileCheckTimer, &QTimer::timeout, this, [this, runId, shellQuote]() {
             if (drmFileCheckProcess->state() != QProcess::NotRunning)
                 return;
 
