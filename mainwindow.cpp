@@ -1324,6 +1324,9 @@ done
 echo "[$(ts)] HLS publisher finished" >> "$LOG"
 )DRM_HLS_SCRIPT");
 
+    // Уникальный маркер не позволяет принять плейлист от предыдущего запуска.
+    const QString runId = QString::number(QDateTime::currentMSecsSinceEpoch());
+
     const QString remoteCmd =
         // Останавливаем старые процессы, затем только после этого удаляем старые файлы.
         "if [ -s \"$HOME/drm_mux.pid\" ]; then "
@@ -1340,7 +1343,8 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
         "      \"$HOME/drm.mp4\" \"$HOME/master.m3u8\" \"$HOME/drm.ts\" \"$HOME/drm.aar.ts\" "
         "      /tmp/drm-assemble.sh; "
         "rm -rf \"$HOME/drm\"; "
-        "mkdir -p \"$HOME/drm\"; "
+        "mkdir -p \"$HOME/drm/hls\"; "
+        "printf '%s\\n' " + shellQuote(runId) + " > \"$HOME/drm/hls/.run-id\"; "
         ": > /tmp/drm-download.log; "
         ": > /tmp/drm-mux.log; "
         // Пишем скрипт сборщика в файл (без проблем с кавычками).
@@ -1382,11 +1386,11 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                 qInfo().noquote() << "[DRM remote check]" << output.trimmed();
             qInfo() << "DRM remote check finished; exitCode=" << exitCode;
 
-            if (exitCode == 0 && output.contains("DRM_MP4_READY")) {
+            if (exitCode == 0 && output.contains("DRM_HLS_READY")) {
                 if (drmFileCheckTimer)
                     drmFileCheckTimer->stop();
                 QMessageBox::information(this, "DRM",
-                    "Динамический HLS-плейлист готов.\n"
+                    "Новый динамический HLS-плейлист опубликован.\n"
                     "Нажмите Play — Kodi откроет поток один раз\n"
                     "и будет получать новые сегменты по мере загрузки.");
             } else if (output.contains("DRM_MUX_FAILED")) {
@@ -1419,13 +1423,20 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                 qInfo() << "Checking remote DRM output and assembler status";
                 drmFileCheckProcess->start("ssh", {
                     "pi@192.168.8.45",
-                    "if [ -s \"$HOME/drm/hls/master.m3u8\" ]; then "
-                    "  echo DRM_MP4_READY; "
-                    "elif [ -s \"$HOME/drm_mux.pid\" ]; then "
-                    "  p=$(cat \"$HOME/drm_mux.pid\"); "
-                    "  if ! kill -0 -- -\"$p\" 2>/dev/null; then "
-                    "    echo DRM_MUX_FAILED; "
-                    "    tail -n 25 /tmp/drm-mux.log; "
+                    "if [ -s \"$HOME/drm/hls/.run-id\" ] && "
+                    "   [ \"$(cat \"$HOME/drm/hls/.run-id\" 2>/dev/null)\" = " + shellQuote(runId) + " ]; then "
+                    "  if [ -s \"$HOME/drm/hls/master.m3u8\" ] && "
+                    "     [ -s \"$HOME/drm/hls/video.m3u8\" ] && "
+                    "     [ -s \"$HOME/drm/hls/audio.m3u8\" ] && "
+                    "     grep -q \"#EXTINF:\" \"$HOME/drm/hls/video.m3u8\" && "
+                    "     grep -q \"#EXTINF:\" \"$HOME/drm/hls/audio.m3u8\"; then "
+                    "    echo DRM_HLS_READY; "
+                    "  elif [ -s \"$HOME/drm_mux.pid\" ]; then "
+                    "    p=$(cat \"$HOME/drm_mux.pid\"); "
+                    "    if ! kill -0 -- -\"$p\" 2>/dev/null; then "
+                    "      echo DRM_MUX_FAILED; "
+                    "      tail -n 25 /tmp/drm-mux.log; "
+                    "    fi; "
                     "  fi; "
                     "fi"
                 });
