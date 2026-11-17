@@ -1232,84 +1232,120 @@ while true; do
   python3 - "$V" "$A" "$HOME/drm" "$finished" <<'PY_BUILDER'
 import glob, math, os, pathlib, sys, tempfile, time
 vdir, adir, root, finished = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3]), sys.argv[4] == '1'
-out = root / 'hls'; out.mkdir(parents=True, exist_ok=True)
-def files(directory):
-    # N_m3u8DL-RE may append _dec to decrypted video fragments while
-    # audio fragments can retain the plain numeric .m4s filename.
-    found = glob.glob(os.path.join(directory, '*.m4s'))
-    return sorted(found, key=lambda p: int(os.path.splitext(os.path.basename(p))[0].split('_', 1)[0]))
+out = root / 'hls'
+out.mkdir(parents=True, exist_ok=True)
+
+def files(directory, timescale):
+    # Video and audio are independent HLS renditions. Do not force a
+    # one-to-one match: their fragment boundaries/counts may legitimately differ.
+    result = []
+    for path in glob.glob(os.path.join(directory, '*.m4s')):
+        stem = os.path.splitext(os.path.basename(path))[0]
+        try:
+            ticks = int(stem.split('_', 1)[0])
+        except ValueError:
+            continue
+        result.append((ticks / timescale, path))
+    return sorted(result, key=lambda item: item[0])
+
 def stable(path):
     try:
-        a = os.stat(path); time.sleep(0.12); b = os.stat(path)
-        return a.st_size > 0 and a.st_size == b.st_size and a.st_mtime_ns == b.st_mtime_ns
-    except OSError: return False
+        first = os.stat(path)
+        time.sleep(0.12)
+        second = os.stat(path)
+        return (first.st_size > 0 and first.st_size == second.st_size
+                and first.st_mtime_ns == second.st_mtime_ns)
+    except OSError:
+        return False
+
+def stable_tail(entries):
+    # Never publish the fragment that the downloader is still writing.
+    while len(entries) >= 2 and not stable(entries[-1][1]):
+        entries.pop()
+    return entries
+
 def atomic_write(path, data):
     fd, tmp = tempfile.mkstemp(prefix=path.name + '.', suffix='.tmp', dir=str(path.parent))
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(data); f.flush(); os.fsync(f.fileno())
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(tmp, path)
     finally:
-        try: os.unlink(tmp)
-        except FileNotFoundError: pass
-vf, af = files(vdir), files(adir)
-# Match the independent track timestamps, not merely array positions.
-# In this stream video ticks are 1/600 s and audio ticks are 1/48000 s.
-audio_by_time = [(int(os.path.splitext(os.path.basename(p))[0].split('_', 1)[0]) / 48000.0, p) for p in af]
-pairs = []
-for vp in vf:
-    vt = int(os.path.basename(vp).split('_', 1)[0]) / 600.0
-    if not audio_by_time: continue
-    best_index = min(range(len(audio_by_time)), key=lambda i: abs(audio_by_time[i][0] - vt))
-    at, ap = audio_by_time[best_index]
-    if abs(at - vt) <= 0.10:
-        pairs.append((vt, vp, ap))
-        audio_by_time.pop(best_index)
-if len(pairs) < 2: sys.exit(0)
-# Never expose the newest pair until both corresponding files stop growing.
-while len(pairs) >= 2 and (not stable(pairs[-1][1]) or not stable(pairs[-1][2])):
-    pairs.pop()
-# Keep a safety margin behind the downloader's live edge. Kodi reads only
-# published segments, so the newest three complete pairs act as a live buffer.
-LIVE_HOLD_BACK_SEGMENTS = 3
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+
+video_entries = stable_tail(files(vdir, 600))
+audio_entries = stable_tail(files(adir, 48000))
+if len(video_entries) < 2 or len(audio_entries) < 2:
+    sys.exit(0)
+
+# Keep a larger safety margin behind the live edge. Kodi only sees completed
+# fragments; the downloader can finish writing upcoming fragments undisturbed.
+LIVE_HOLD_BACK_SEGMENTS = 5
 LIVE_WINDOW_SEGMENTS = 90
 STARTUP_BUFFER_SEGMENTS = 5
-visible_end = len(pairs) if finished else max(0, len(pairs) - LIVE_HOLD_BACK_SEGMENTS)
-minimum_visible = 2 if finished else STARTUP_BUFFER_SEGMENTS
-if visible_end < minimum_visible: sys.exit(0)
-start = max(0, visible_end - LIVE_WINDOW_SEGMENTS)
-selected = pairs[start:visible_end]
-def make_playlist(track_index, directory, done):
+
+def make_playlist(entries, directory, done):
+    visible_end = len(entries) if done else max(0, len(entries) - LIVE_HOLD_BACK_SEGMENTS)
+    minimum_visible = 2 if done else STARTUP_BUFFER_SEGMENTS
+    if visible_end < minimum_visible:
+        return None
+
+    start = max(0, visible_end - LIVE_WINDOW_SEGMENTS)
+    selected = entries[start:visible_end]
     init_candidates = [directory / '_init_dec.mp4', directory / '_init.mp4']
-    init_path = next((p for p in init_candidates if p.is_file() and p.stat().st_size > 0), None)
+    init_path = next((path for path in init_candidates
+                      if path.is_file() and path.stat().st_size > 0), None)
     if init_path is None:
         raise RuntimeError(f'init segment missing in {directory}')
+
     durations = []
-    for i, pair in enumerate(selected):
+    for i, (timestamp, _) in enumerate(selected):
         absolute_index = start + i
-        # The first hidden pair supplies the duration of the last published
-        # segment, keeping audio and video playlist timelines aligned.
-        if absolute_index + 1 < len(pairs): duration = pairs[absolute_index+1][0] - pair[0]
-        elif len(selected) > 1: duration = selected[-1][0] - selected[-2][0]
-        else: duration = 3.2
-        if not (0.1 <= duration <= 30): duration = 3.2
+        if absolute_index + 1 < len(entries):
+            duration = entries[absolute_index + 1][0] - timestamp
+        elif len(selected) > 1:
+            duration = selected[-1][0] - selected[-2][0]
+        else:
+            duration = 3.2
+        if not (0.1 <= duration <= 30):
+            duration = 3.2
         durations.append(duration)
+
     target = max(1, math.ceil(max(durations)))
     rel_dir = os.path.relpath(directory, out)
-    lines = ['#EXTM3U','#EXT-X-VERSION:7',f'#EXT-X-TARGETDURATION:{target}',
-             f'#EXT-X-MEDIA-SEQUENCE:{start}',f'#EXT-X-MAP:URI="{rel_dir}/{init_path.name}"']
-    for pair, duration in zip(selected, durations):
-        name = os.path.basename(pair[track_index])
-        lines += [f'#EXTINF:{duration:.3f},', f'{rel_dir}/{name}']
-    if done: lines.append('#EXT-X-ENDLIST')
-    return '\n'.join(lines)+'\n'
-atomic_write(out/'video.m3u8', make_playlist(1, pathlib.Path(vdir), finished))
-atomic_write(out/'audio.m3u8', make_playlist(2, pathlib.Path(adir), finished))
+    lines = [
+        '#EXTM3U',
+        '#EXT-X-VERSION:7',
+        f'#EXT-X-TARGETDURATION:{target}',
+        f'#EXT-X-MEDIA-SEQUENCE:{start}',
+        f'#EXT-X-MAP:URI="{rel_dir}/{init_path.name}"'
+    ]
+    for (_, path), duration in zip(selected, durations):
+        lines.extend([f'#EXTINF:{duration:.3f},',
+                      f'{rel_dir}/{os.path.basename(path)}'])
+    if done:
+        lines.append('#EXT-X-ENDLIST')
+    return '\n'.join(lines) + '\n'
+
+video_playlist = make_playlist(video_entries, pathlib.Path(vdir), finished)
+audio_playlist = make_playlist(audio_entries, pathlib.Path(adir), finished)
+if video_playlist is None or audio_playlist is None:
+    sys.exit(0)
+
+atomic_write(out / 'video.m3u8', video_playlist)
+atomic_write(out / 'audio.m3u8', audio_playlist)
 master = ('#EXTM3U\n#EXT-X-VERSION:7\n'
           '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="AAC",DEFAULT=YES,AUTOSELECT=YES,URI="audio.m3u8"\n'
           '#EXT-X-STREAM-INF:BANDWIDTH=700000,CODECS="avc1.4D401E,mp4a.40.2",AUDIO="audio"\nvideo.m3u8\n')
-atomic_write(out/'master.m3u8',master)
-print(f'published {len(selected)} pairs; held back {0 if finished else min(LIVE_HOLD_BACK_SEGMENTS, len(pairs))}; total matched={len(pairs)}, finished={finished}')
+atomic_write(out / 'master.m3u8', master)
+print(f'published video={len(video_entries)} audio={len(audio_entries)} '
+      f'fragments; holdback={0 if finished else LIVE_HOLD_BACK_SEGMENTS}; '
+      f'finished={finished}')
 PY_BUILDER
   rc=$?
   if [ "$rc" -ne 0 ]; then echo "[$(ts)] ERROR: playlist publisher exit=$rc" >> "$LOG"; fi
