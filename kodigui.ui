@@ -166,14 +166,14 @@
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_info">
+             <widget class="QPushButton" name="showStreamlinkInfoButton">
               <property name="text">
                <string>info</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_clearurl">
+             <widget class="QPushButton" name="clearUrlFieldsButton">
               <property name="text">
                <string>clear url</string>
               </property>
@@ -609,14 +609,14 @@
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_match_streamlink">
+             <widget class="QPushButton" name="startMatchTvStreamlinkButton">
               <property name="text">
                <string>Streamlink → файл</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_play_match_file">
+             <widget class="QPushButton" name="playMatchTvFileButton">
               <property name="text">
                <string>Play match.mp4</string>
               </property>
@@ -707,21 +707,21 @@
         <item>
          <layout class="QHBoxLayout" name="drmBtns1">
           <item>
-           <widget class="QPushButton" name="pushButton_rundrm">
+           <widget class="QPushButton" name="startDrmDownloadButton">
             <property name="text">
              <string>run</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_playdrm">
+           <widget class="QPushButton" name="playDrmHlsButton">
             <property name="text">
              <string>Play</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_cleardrm">
+           <widget class="QPushButton" name="clearDrmFieldsButton">
             <property name="text">
              <string>clear</string>
             </property>
@@ -745,14 +745,14 @@
         <item>
          <layout class="QHBoxLayout" name="drmBtns2">
           <item>
-           <widget class="QPushButton" name="pushButton_killstreamlink">
+           <widget class="QPushButton" name="stopStreamlinkButton">
             <property name="text">
              <string>Kill streamlink</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_kill_m3u8DL">
+           <widget class="QPushButton" name="stopDrmDownloadButton">
             <property name="text">
              <string>Kill N_m3u8DL-RE</string>
             </property>
