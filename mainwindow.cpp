@@ -358,6 +358,7 @@ MainWindow::MainWindow(QWidget *parent)
     setButtonIcon(ui->playMatchTvFileButton, QStyle::SP_MediaPlay);
     setButtonIcon(ui->playMatchTvIptvButton, QStyle::SP_MediaPlay);
     setButtonIcon(ui->startYoutubeDownloadButton, QStyle::SP_ArrowDown);
+    setButtonIcon(ui->startYoutubeStreamlinkButton, QStyle::SP_MediaPlay);
     setButtonIcon(ui->startMatchTvStreamlinkButton, QStyle::SP_ArrowDown);
     setButtonIcon(ui->startDrmDownloadButton, QStyle::SP_ArrowDown);
     setButtonIcon(ui->captureMatchTvUrlButton, QStyle::SP_FileDialogDetailedView);
@@ -1192,6 +1193,35 @@ void MainWindow::on_startYoutubeDownloadButton_clicked()
         qDebug() << "Прошло 50 секунд, открываем /home/pi/kodigui/yt.mp4";
         postPlayerOpenFile("/home/pi/kodigui/yt.mp4");
     });
+}
+
+void MainWindow::on_startYoutubeStreamlinkButton_clicked()
+{
+    const QString user = "pi@192.168.8.45";
+    const QString input = currentYoutubeUrl().trimmed();
+
+    if (input.isEmpty()) {
+        QMessageBox::warning(this, "YouTube", "Введите live URL.");
+        return;
+    }
+
+    auto shellQuote = [](const QString &value) {
+        QString escaped = value;
+        escaped.replace("'", "'\\''");
+        return "'" + escaped + "'";
+    };
+
+    const QString remoteCmd =
+        "mkdir -p \"$HOME/kodigui\"; "
+        "printf '\\n===== Streamlink start: %s =====\\n' \"$(date -Is)\" "
+        ">> \"$HOME/kodigui/streamlink.log\"; "
+        "nohup setsid \"$HOME/.local/bin/streamlink\" "
+        + shellQuote(input) +
+        " 360p -f -o \"$HOME/kodigui/yt.mp4\" "
+        ">> \"$HOME/kodigui/streamlink.log\" 2>&1 < /dev/null & "
+        "echo $! > \"$HOME/kodigui/streamlink.pid\"";
+
+    runCommand("ssh", {user, remoteCmd});
 }
 
 QString MainWindow::currentYoutubeUrl()
