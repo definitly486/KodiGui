@@ -604,7 +604,14 @@
             <item>
              <widget class="QPushButton" name="pushButton_16">
               <property name="text">
-               <string>Play</string>
+               <string>Play (IPTV)</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_match_streamlink">
+              <property name="text">
+               <string>Streamlink → файл</string>
               </property>
              </widget>
             </item>
