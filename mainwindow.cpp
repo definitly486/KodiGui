@@ -35,6 +35,7 @@
 #include <QSettings>
 #include <QVBoxLayout>
 #include <QLabel>
+#include <QFont>
 #include <QWidget>
 #include <atomic>
 #include <cstdlib>
@@ -298,17 +299,18 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tabWidget->addTab(settingsPage, style()->standardIcon(QStyle::SP_DesktopIcon),
                           QStringLiteral("Настройки"));
 
-    QSettings themeSettings(QStringLiteral("definitly486"), QStringLiteral("KodiGui"));
-    const QString savedTheme = themeSettings.value(QStringLiteral("appearance/theme"),
-                                                    QStringLiteral("dark")).toString();
+    auto *themeSettings = new QSettings(QStringLiteral("definitly486"),
+                                        QStringLiteral("KodiGui"), this);
+    const QString savedTheme = themeSettings->value(QStringLiteral("appearance/theme"),
+                                                     QStringLiteral("dark")).toString();
     const bool useLightTheme = (savedTheme == QStringLiteral("light"));
     themeCombo->setCurrentIndex(useLightTheme ? 1 : 0);
     applyTheme(useLightTheme);
     connect(themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [applyTheme, themeSettings](int index) mutable {
+            this, [applyTheme, themeSettings](int index) {
         const bool light = (index == 1);
         applyTheme(light);
-        themeSettings.setValue(QStringLiteral("appearance/theme"),
+        themeSettings->setValue(QStringLiteral("appearance/theme"),
                                light ? QStringLiteral("light") : QStringLiteral("dark"));
         qInfo() << "Appearance theme changed to" << (light ? "light" : "dark");
     });
