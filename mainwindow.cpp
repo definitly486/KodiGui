@@ -875,6 +875,190 @@ QUrl url("https://matchtv.ru/on-air");
 }
 void MainWindow::on_pushButton_16_clicked()
 {
+    QString input = ui->lineEdit_4->text();
+    QString filePath = "/tmp/list.m3u";
+
+    if (input.trimmed().isEmpty()) {
+        qWarning() << "Match TV: URL is empty — press \"Получить URL\" first";
+        return;
+    }
+
+    // 1️⃣ Создаём M3U
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qCritical() << "Cannot create M3U file";
+        return;
+    }
+    QTextStream(&file)
+        << "#EXTM3U\n"
+        << "#EXTINF:-1,My Channel Name\n"
+        << input << "\n";
+    file.close();
+
+    qDebug() << "Temporary M3U created at" << filePath;
+
+    QPointer<MainWindow> safeThis(this);
+
+    // Короткая обёртка над JSON-RPC: метод + params + описание + колбэк.
+    auto rpc = [safeThis](const QString &method, const QJsonObject &params,
+                          const QString &desc,
+                          std::function<void(const QJsonObject &)> cb) {
+        if (!safeThis) return;
+        QJsonObject o;
+        o["jsonrpc"] = "2.0";
+        o["method"]  = method;
+        if (!params.isEmpty())
+            o["params"] = params;
+        o["id"] = safeThis->rpcId++;
+        safeThis->sendJsonRpc(o, desc, cb);
+    };
+
+    // ---- Шаг 6: ждём канал в PVR и запускаем его ------------------------
+    auto pollChannel = std::make_shared<std::function<void(int)>>();
+    *pollChannel = [safeThis, rpc, pollChannel](int attemptsLeft) {
+        if (!safeThis) return;
+        auto retry = [safeThis, pollChannel, attemptsLeft](const char *why) {
+            if (attemptsLeft > 1) {
+                QTimer::singleShot(1500, safeThis, [pollChannel, attemptsLeft]() {
+                    (*pollChannel)(attemptsLeft - 1);
+                });
+            } else {
+                qWarning() << "Match TV: giving up:" << why;
+            }
+        };
+
+        rpc("PVR.GetChannelGroups", QJsonObject{{"channeltype", "tv"}}, "Get Channel Groups",
+            [safeThis, rpc, retry](const QJsonObject &resp) {
+                if (!safeThis) return;
+                if (resp.contains("error")) {
+                    qWarning() << "Match TV: GetChannelGroups error:" << resp["error"];
+                    retry("GetChannelGroups error");
+                    return;
+                }
+                QJsonArray groups = resp["result"].toObject()["channelgroups"].toArray();
+                if (groups.isEmpty()) {
+                    retry("no channel groups");
+                    return;
+                }
+                // channelgroupid в ответе Kodi — число, не строка.
+                QJsonValue groupId = groups.first().toObject()["channelgroupid"];
+
+                rpc("PVR.GetChannels",
+                    QJsonObject{{"channelgroupid", groupId},
+                                {"properties", QJsonArray{"channel"}}},
+                    "Get Channels",
+                    [safeThis, rpc, retry](const QJsonObject &chResp) {
+                        if (!safeThis) return;
+                        if (chResp.contains("error")) {
+                            qWarning() << "Match TV: GetChannels error:" << chResp["error"];
+                            retry("GetChannels error");
+                            return;
+                        }
+                        QJsonArray channels = chResp["result"].toObject()["channels"].toArray();
+                        if (channels.isEmpty()) {
+                            retry("no channels");
+                            return;
+                        }
+                        int channelId = channels.first().toObject()["channelid"].toInt();
+                        qDebug() << "Match TV: opening channel"
+                                 << channels.first().toObject()["channel"].toString();
+
+                        rpc("Player.Open",
+                            QJsonObject{{"item", QJsonObject{{"channelid", channelId}}}},
+                            "Play channel",
+                            [](const QJsonObject &playResp) {
+                                if (playResp.contains("error"))
+                                    qWarning() << "Match TV: Player.Open error:" << playResp["error"];
+                                else
+                                    qDebug() << "Match TV: playback started";
+                            });
+                    });
+            });
+    };
+
+    // ---- Шаг 5: ждём, пока PVR-менеджер Kodi реально поднимется ----------
+    // Любые запросы к PVR (GetChannelGroups и т.п.) в момент, когда клиент
+    // ещё стартует после Enable, могут уронить Kodi. Поэтому сначала
+    // опрашиваем PVR.GetProperties("available").
+    auto waitPvr = std::make_shared<std::function<void(int)>>();
+    *waitPvr = [safeThis, rpc, waitPvr, pollChannel](int attemptsLeft) {
+        if (!safeThis) return;
+        rpc("PVR.GetProperties", QJsonObject{{"properties", QJsonArray{"available"}}},
+            "PVR.GetProperties",
+            [safeThis, waitPvr, pollChannel, attemptsLeft](const QJsonObject &resp) {
+                if (!safeThis) return;
+                const bool available =
+                    !resp.contains("error") && resp["result"].toObject()["available"].toBool();
+                if (available) {
+                    // Даём клиенту ещё секунду дочитать плейлист.
+                    QTimer::singleShot(1500, safeThis, [pollChannel]() { (*pollChannel)(10); });
+                } else if (attemptsLeft > 1) {
+                    QTimer::singleShot(1000, safeThis, [waitPvr, attemptsLeft]() {
+                        (*waitPvr)(attemptsLeft - 1);
+                    });
+                } else {
+                    qWarning() << "Match TV: PVR did not become available, aborting";
+                }
+            });
+    };
+
+    // ---- Шаг 4: Enable PVR-клиента (после паузы) -------------------------
+    auto enablePvr = [safeThis, rpc, waitPvr]() {
+        rpc("Addons.SetAddonEnabled",
+            QJsonObject{{"addonid", "pvr.iptvsimple"}, {"enabled", true}},
+            "Enable PVR",
+            [safeThis, waitPvr](const QJsonObject &enableResp) {
+                if (!safeThis) return;
+                if (enableResp.contains("error")) {
+                    qWarning() << "Match TV: Enable PVR error:" << enableResp["error"];
+                    return;
+                }
+                // PVR.Scan больше не вызываем: у iptvsimple нет «скана», он
+                // отвечает -32100, а сам вызов во время старта клиента опасен.
+                QTimer::singleShot(3000, safeThis, [waitPvr]() { (*waitPvr)(20); });
+            });
+    };
+
+    // ---- Шаг 3: Disable PVR-клиента, затем длинная пауза -----------------
+    // Disable и Enable подряд без паузы роняют Kodi: PVR-менеджер не успевает
+    // остановить клиент. Ждём 4 секунды между ними.
+    auto disablePvr = [safeThis, rpc, enablePvr]() {
+        rpc("Addons.SetAddonEnabled",
+            QJsonObject{{"addonid", "pvr.iptvsimple"}, {"enabled", false}},
+            "Disable PVR",
+            [safeThis, enablePvr](const QJsonObject &disableResp) {
+                if (!safeThis) return;
+                if (disableResp.contains("error"))
+                    qWarning() << "Match TV: Disable PVR error:" << disableResp["error"];
+                QTimer::singleShot(4000, safeThis, [enablePvr]() { enablePvr(); });
+            });
+    };
+
+    // ---- Шаги 1-2: Stop плеера → SFTP upload → Disable ------------------
+    rpc("Player.Stop", QJsonObject{{"playerid", 1}}, "Player.Stop",
+        [safeThis, filePath, disablePvr](const QJsonObject &) {
+            if (!safeThis) return;
+            [[maybe_unused]] auto uploadFuture = QtConcurrent::run([safeThis, filePath, disablePvr]() {
+                if (!uploadFileViaSftp(filePath, "/var/www/html/list.m3u")) {
+                    qWarning() << "Match TV: SFTP upload failed, aborting";
+                    return;
+                }
+                if (!safeThis) return;
+                QMetaObject::invokeMethod(
+                    safeThis,
+                    [safeThis, disablePvr]() {
+                        if (!safeThis) return;
+                        // Плеер только что остановлен — даём Kodi секунду
+                        // освободить ресурсы, прежде чем трогать аддон.
+                        QTimer::singleShot(1000, safeThis, [disablePvr]() { disablePvr(); });
+                    },
+                    Qt::QueuedConnection);
+            });
+        });
+}
+
+void MainWindow::on_pushButton_match_streamlink_clicked()
+{
     const QString input = ui->lineEdit_4->text().trimmed();
     if (input.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("Матч ТВ"),
@@ -926,6 +1110,7 @@ void MainWindow::on_pushButton_16_clicked()
                            "журнал: /home/pi/matchtv-streamlink.log"));
     });
 }
+
 
 void MainWindow::on_getonairnow_clicked()
 {
