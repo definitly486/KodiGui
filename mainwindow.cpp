@@ -311,7 +311,7 @@ MainWindow::MainWindow(QWidget *parent)
                                   << installPathError;
             QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
                 QStringLiteral("Каталог для установки расширения недоступен.\n"
-                               "Путь: %1\\nПричина: %2")
+                               "Путь: %1\nПричина: %2")
                     .arg(installPath, installPathError));
             return;
         }
