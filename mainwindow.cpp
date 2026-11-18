@@ -1160,33 +1160,34 @@ void MainWindow::on_startYoutubeDownloadButton_clicked()
         return;
     }
 
-    // Экранируем URL для удалённой shell-команды, чтобы символы в ссылке
-    // не интерпретировались оболочкой.
+    // Экранируем URL для удалённой shell-команды.
     auto shellQuote = [](const QString &value) {
         QString escaped = value;
         escaped.replace("'", "'\\''");
         return "'" + escaped + "'";
     };
 
-    // Последовательно останавливаем старую загрузку, очищаем старый файл
-    // и запускаем yt-dlp с параметрами, заданными для YouTube-вкладки.
+    // youtubeUnblock достаточно запустить один раз. Повторный restart
+    // непосредственно перед загрузкой не нужен и может оборвать сеть.
     const QString remoteCmd =
-        "sudo systemctl start youtubeUnblock; "
-        "mkdir -p \"$HOME/kodigui\"; "
+        "sudo systemctl start youtubeUnblock && "
+        "mkdir -p \"$HOME/kodigui\" && "
         "killall -9 yt-dlp 2>/dev/null || true; "
         "killall -9 ffmpeg 2>/dev/null || true; "
         "rm -f \"$HOME/kodigui/yt.mp4\" \"$HOME/kodigui/yt.part\"; "
-        "sudo systemctl restart youtubeUnblock; "
-        "nohup \"$HOME/.local/bin/yt-dlp\" --js-runtimes deno "
-        "-f '231+234' --merge-output-format mp4 "
+        "printf '\\n===== yt-dlp start: %s =====\\n' \"$(date -Is)\" "
+        ">> \"$HOME/kodigui/yt-dlp.log\"; "
+        "setsid -f \"$HOME/.local/bin/yt-dlp\" --verbose --newline "
+        "--js-runtimes deno -f '230+234' --merge-output-format mp4 "
         "--no-part --force-overwrites "
+        "--retries infinite --fragment-retries infinite --retry-sleep 5 "
         + shellQuote(input) +
         " -o \"$HOME/kodigui/yt\" "
-        "> \"$HOME/kodigui/yt-dlp.log\" 2>&1 < /dev/null &";
+        ">> \"$HOME/kodigui/yt-dlp.log\" 2>&1 < /dev/null";
 
     runCommand("ssh", {user, remoteCmd});
 
-    // Через 50 секунд открываем загруженный файл в Kodi (как и раньше).
+    // Через 50 секунд открываем файл в Kodi, как и раньше.
     QTimer::singleShot(50000, this, [this]() {
         qDebug() << "Прошло 50 секунд, открываем /home/pi/kodigui/yt.mp4";
         postPlayerOpenFile("/home/pi/kodigui/yt.mp4");
