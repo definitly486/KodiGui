@@ -2023,7 +2023,7 @@ LOG="$HOME/kodigui/drm-mux.log"
 ts() { date +%H:%M:%S; }
 echo "[$(ts)] Dynamic HLS publisher started" >> "$LOG"
 TASK_ROOT="$HOME/kodigui/drm/tmp/drm"
-V=""; A=""
+V=""; A=""; VI=""; AI=""
 for i in $(seq 1 120); do
   # N_m3u8DL-RE stores live tracks under <tmp-dir>/<save-name>/<track>.
   # Discover recursively because track folder names vary between releases.
