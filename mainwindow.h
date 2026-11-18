@@ -2,6 +2,15 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QProcess>
+#include <QTimer>
+#include <QString>
+#include <QNetworkAccessManager>  // <-- обязательно для QNetworkAccessManager
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QJsonObject>
+#include <QJsonValue>
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -18,49 +27,117 @@ public:
     ~MainWindow();
 
 private slots:
-    void on_horizontalSlider_valueChanged(int value);
+    void on_volumeSlider_valueChanged(int value);
 
-    QString on_lineEdit_textChanged();
+    QString currentKodidlpUrl();
 
-    void on_pushButton_clicked();
+    void on_showStreamlinkInfoButton_clicked();
 
-    void on_pushButton_2_clicked();
+    void on_startKodidlpButton_clicked();
 
-    void on_pushButton_3_clicked();
+    void on_playPvrChannelButton_clicked();
 
-    void on_pushButton_4_clicked();
+    void on_stopPvrChannelButton_clicked();
 
-    void on_pushButton_6_clicked();
+    void on_startKodiButton_clicked();
 
-    void on_pushButton_5_clicked();
+    void on_stopKodiButton_clicked();
 
-    QString  on_lineEdit_2_textChanged();
+    void on_rebootKodiButton_clicked();
 
-    void on_pushButton_7_clicked();
+    QString  currentIptvUrl();
 
-    void on_pushButton_9_clicked();
+    void on_playIptvUrlButton_clicked();
 
-    void on_pushButton_8_clicked();
+    void on_playYoutubeFileButton_clicked();
 
-     QString  on_lineEdit_3_textChanged();
+    void on_startYoutubeDownloadButton_clicked();
+
+    void on_startYoutubeStreamlinkButton_clicked();
+    void on_killYoutubeStreamlinkButton_clicked();
+    void on_closeYoutubePopupButton_clicked();
+
+     QString  currentYoutubeUrl();
+    void on_getonairnow_clicked();  // <-- добавьте эту строку
+
+     void on_stopYoutubePlaybackButton_clicked();
+
+     void on_stopYtDlpButton_clicked();
+
+     void on_stopFfmpegButton_clicked();
+
+     void on_toggleIptvSimpleClientButton_clicked();
+
+     void on_sendBackActionButton_clicked();
+
+     void on_clearUrlFieldsButton_clicked();
+
+     void on_captureMatchTvUrlButton_clicked();
+
+     void on_playMatchTvIptvButton_clicked();
+
+     void on_startMatchTvStreamlinkButton_clicked();
+     void on_playMatchTvFileButton_clicked();
+
+     void on_playDrmStreamButton_clicked();
+
+     void on_stopDrmPlaybackButton_clicked();
+
+     void on_startDrmDownloadButton_clicked();
+
+      QString  currentDrmUrl();
+
+       QString  currentDrmKey();
 
 
 
-     void on_pushButton_10_clicked();
-
-     void on_pushButton_11_clicked();
-
-     void on_pushButton_12_clicked();
-
-     void on_pushButton_13_clicked();
-
-     void on_pushButton_14_clicked();
-
-     void on_pushButton_clearurl_clicked();
 
 
+       void on_stopStreamlinkButton_clicked();
+       void on_killMatchTvStreamlinkButton_clicked();
+       void on_closeMatchTvPopupButton_clicked();
 
- private:
-    Ui::MainWindow *ui;
+       void on_clearDrmFieldsButton_clicked();
+
+       void on_playDrmHlsButton_clicked();
+
+       void on_stopDrmDownloadButton_clicked();
+
+       void on_closePopupButton_clicked();
+
+
+       void on_refreshSystemMonitorButton_clicked();
+
+    void on_debugClearButton_clicked();
+
+   private:
+ Ui::MainWindow *ui;
+ QProcess *pythonProcess;        // ← вот это
+ QProcess *kodidlpProcess;
+ QTimer *drmFileCheckTimer = nullptr;
+ QProcess *drmFileCheckProcess = nullptr;
+ int drmFileCheckAttempts = 0;
+   QNetworkAccessManager *manager;
+    int rpcId = 1;
+
+    void sendJsonRpc(
+        const QJsonObject &json,
+        const QString &desc,
+        std::function<void(const QJsonObject&)> onSuccess = nullptr
+    );
+
+    // --- Общие хелперы для Kodi JSON-RPC (убирают дублирование boilerplate'а) ---
+    void postPlayerOpenFile(const QString &file);
+    void postPlayerOpenChannel(int channelId);
+    void postPlayerStop();
+    void postSetVolume(int volume);
+    void postInputAction(const QString &action);
+    void postSetAddonEnabled(const QString &addonId, const QJsonValue &enabledValue);
+
+    // --- Общий хелпер для SSH-команд (killall на Raspberry Pi) ---
+    void sshKillProcess(const QString &processName);
+
+    // --- Общий хелпер для очистки полей ввода ---
+    void clearLineEditField(class QLineEdit *edit, const QString &placeholder);
 };
 #endif // MAINWINDOW_H
