@@ -4,44 +4,59 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QtWidgets>
+#include <QDir>
+#include <QFileInfo>
+#include <QDebug>
 
 int main(int argc, char *argv[])
 {
-
-    // Keep GPU acceleration disabled on systems where Chromium GPU startup
-    // is unreliable, but leave Chromium's software rasterizer available.
     qputenv("QTWEBENGINE_DISABLE_GPU", "1");
-    qputenv("QTWEBENGINE_CHROMIUM_FLAGS",
-            "--disable-gpu "
-            "--disable-gpu-compositing "
-            "--disable-features=UseOzonePlatform");
 
-    qputenv("QT_QPA_PLATFORM", "xcb");      // fallback с Wayland
-    qputenv("QT_DISABLE_VULKAN", "1");      // на всякий случай
+    QString chromiumFlags = QStringLiteral(
+        "--disable-gpu "
+        "--disable-gpu-compositing "
+        "--disable-features=UseOzonePlatform");
+
+    // Qt WebEngine loads an external Widevine CDM using --widevine-path.
+    // OpenWV is built separately; its device identity must remain local.
+    QString widevinePath = qEnvironmentVariable("KODIGUI_WIDEVINE_PATH");
+    if (widevinePath.isEmpty()) {
+        widevinePath = QDir::home().filePath(
+            QStringLiteral(".local/share/KodiGui/widevine/libwidevinecdm.so"));
+    }
+
+    const QFileInfo widevineInfo(widevinePath);
+    if (widevineInfo.isFile() && widevineInfo.isReadable()) {
+        widevinePath.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
+        widevinePath.replace(QStringLiteral("\""), QStringLiteral("\\\""));
+        chromiumFlags += QStringLiteral(" --widevine-path=\"%1\"").arg(widevinePath);
+        qInfo().noquote() << "[Widevine] CDM configured:"
+                          << widevineInfo.absoluteFilePath();
+    } else {
+        qInfo().noquote() << "[Widevine] CDM not found; DRM playback is unavailable."
+                          << "Expected:" << widevineInfo.absoluteFilePath()
+                          << "or set KODIGUI_WIDEVINE_PATH.";
+    }
+
+    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromiumFlags.toLocal8Bit());
+    qputenv("QT_QPA_PLATFORM", "xcb");
+    qputenv("QT_DISABLE_VULKAN", "1");
     qputenv("QT_QUICK_BACKEND", "software");
 
-    QApplication app(argc, argv); // переименовал переменную в app для ясности
-
+    QApplication app(argc, argv);
     MainWindow w;
-    w.show(); // показываем окно ДО вычисления размеров окна
+    w.show();
 
-    // Получение размеров экрана с использованием QScreen
     const auto primaryScreen = QGuiApplication::primaryScreen();
     if (!primaryScreen)
-        return EXIT_FAILURE; // защита от ситуации отсутствия экранов
+        return EXIT_FAILURE;
 
     const QRect availableGeometry = primaryScreen->availableGeometry();
-    int screenWidth = availableGeometry.width();
-    int screenHeight = availableGeometry.height();
-
-    // Теперь получаем размер видимого окна после отображения (необходимый шаг!)
-    int windowWidth = w.frameGeometry().width();
-    int windowHeight = w.frameGeometry().height();
-
-    // Центрирование окна относительно центра экрана
-    int x = (screenWidth - windowWidth) / 2;
-    int y = (screenHeight - windowHeight) / 2;
-    w.move(x, y);
+    const int screenWidth = availableGeometry.width();
+    const int screenHeight = availableGeometry.height();
+    const int windowWidth = w.frameGeometry().width();
+    const int windowHeight = w.frameGeometry().height();
+    w.move((screenWidth - windowWidth) / 2, (screenHeight - windowHeight) / 2);
 
     return app.exec();
 }
