@@ -515,7 +515,7 @@ void MainWindow::on_startKodidlpButton_clicked()
     });
 }
 
-void MainWindow::on_pushButton_info_clicked()
+void MainWindow::on_showStreamlinkInfoButton_clicked()
 {
     // Получаем текст из lineEdit (с заменой vksport-ссылок на vk.ru)
     QString input = currentKodidlpUrl();
@@ -846,7 +846,7 @@ void MainWindow::on_sendBackActionButton_clicked()
 }
 
 
-void MainWindow::on_pushButton_clearurl_clicked()
+void MainWindow::on_clearUrlFieldsButton_clicked()
 {
     clearLineEditField(ui->lineEdit_2, "Введите URL...");
     clearLineEditField(ui->lineEdit, "Введите URL...");
@@ -1057,13 +1057,13 @@ void MainWindow::on_playMatchTvIptvButton_clicked()
         });
 }
 
-void MainWindow::on_pushButton_play_match_file_clicked()
+void MainWindow::on_playMatchTvFileButton_clicked()
 {
     qInfo() << "Match TV: manually opening kodigui/match.mp4 in Kodi";
     postPlayerOpenFile("kodigui/match.mp4");
 }
 
-void MainWindow::on_pushButton_match_streamlink_clicked()
+void MainWindow::on_startMatchTvStreamlinkButton_clicked()
 {
     const QString input = ui->lineEdit_4->text().trimmed();
     if (input.isEmpty()) {
@@ -1203,7 +1203,7 @@ void MainWindow::on_stopDrmPlaybackButton_clicked()
 }
 
 
-void MainWindow::on_pushButton_rundrm_clicked()
+void MainWindow::on_startDrmDownloadButton_clicked()
 {
     const QString user = "pi@192.168.8.45";
     QString input = currentDrmUrl().trimmed();
@@ -1561,26 +1561,26 @@ QString MainWindow::currentDrmKey()
 }
 
 
-void MainWindow::on_pushButton_killstreamlink_clicked()
+void MainWindow::on_stopStreamlinkButton_clicked()
 {
     sshKillProcess("streamlink");
 }
 
 
-void MainWindow::on_pushButton_cleardrm_clicked()
+void MainWindow::on_clearDrmFieldsButton_clicked()
 {
     clearLineEditField(ui->lineEdit_drm, "Введите URL...");
     clearLineEditField(ui->lineEdit_drm_key, "Введите key...");
 }
 
 
-void MainWindow::on_pushButton_playdrm_clicked()
+void MainWindow::on_playDrmHlsButton_clicked()
 {
     postPlayerOpenFile("kodigui/drm/hls/master.m3u8");
 }
 
 
-void MainWindow::on_pushButton_kill_m3u8DL_clicked()
+void MainWindow::on_stopDrmDownloadButton_clicked()
 {
     if (drmFileCheckTimer)
         drmFileCheckTimer->stop();
