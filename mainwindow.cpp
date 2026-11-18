@@ -112,7 +112,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Кнопки с тематическими иконками: в классической теме они отключаются.
     QList<QPushButton *> themedButtons;
-    auto applyTheme = [this, &themedButtons](const QString &theme) {
+    auto applyTheme = [this](const QString &theme) {
         const bool light = (theme == QStringLiteral("light"));
         const bool classic = (theme == QStringLiteral("classic"));
         if (classic) {
@@ -338,6 +338,12 @@ MainWindow::MainWindow(QWidget *parent)
                                      ? savedTheme : QStringLiteral("classic");
     themeCombo->setCurrentIndex(themeCombo->findData(initialTheme));
     applyTheme(initialTheme);
+    if (initialTheme == QStringLiteral("classic")) {
+        for (QPushButton *button : themedButtons)
+            button->setIcon(QIcon());
+        for (int i = 0; i < ui->tabWidget->count(); ++i)
+            ui->tabWidget->setTabIcon(i, QIcon());
+    }
     connect(themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this, applyTheme, themeSettings, themeCombo, themedButtons, buttonIconMap](int index) {
         const QString theme = themeCombo->itemData(index).toString();
