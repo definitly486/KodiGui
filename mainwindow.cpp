@@ -114,6 +114,7 @@ MainWindow::MainWindow(QWidget *parent)
     QList<QPushButton *> themedButtons;
     auto applyTheme = [this](const QString &theme) {
         const bool light = (theme == QStringLiteral("light"));
+        const bool rust = (theme == QStringLiteral("rust"));
         const bool classic = (theme == QStringLiteral("classic"));
         if (classic) {
             setStyleSheet(QString());
@@ -188,6 +189,105 @@ MainWindow::MainWindow(QWidget *parent)
                 QMenuBar { background: #e8eef4; color: #263445; }
                 QMenuBar::item:selected, QMenu::item:selected { background: #d4eeee; }
                 QMenu { background: #ffffff; color: #263445; border: 1px solid #cbd5e1; }
+            )QSS"));
+        } else if (rust) {
+            setStyleSheet(QStringLiteral(R"QSS(
+                QWidget {
+                    background: transparent;
+                    color: #f0dfbd;
+                    font-family: "Noto Sans", "DejaVu Sans", sans-serif;
+                    font-size: 10pt;
+                }
+                QMainWindow, QWidget#centralwidget {
+                    background-color: #17130e;
+                    background-image: url(:/tractor_theme_bg.jpg);
+                    background-position: center;
+                    background-repeat: no-repeat;
+                }
+                QTabWidget::pane {
+                    border: 1px solid rgba(104, 72, 38, 220);
+                    border-radius: 8px; top: -1px;
+                    background: rgba(25, 21, 16, 218);
+                }
+                QTabBar::tab {
+                    background: rgba(49, 39, 25, 232);
+                    color: #d8bd8b;
+                    border: 1px solid #75542f;
+                    border-bottom: none;
+                    padding: 4px 5px; margin: 1px 1px 0 0;
+                    border-top-left-radius: 6px;
+                    border-top-right-radius: 6px;
+                    min-width: 0px; font-size: 8pt;
+                }
+                QTabBar::tab:selected {
+                    background: rgba(133, 87, 37, 238);
+                    color: #fff0cf; border-color: #d59a45;
+                    font-weight: 600;
+                }
+                QTabBar::tab:hover:!selected {
+                    background: rgba(91, 64, 34, 240); color: #fff4dc;
+                }
+                QPushButton {
+                    background: rgba(119, 78, 34, 224);
+                    color: #fff0d1; border: 1px solid #bd8741;
+                    border-radius: 6px; padding: 7px 13px; min-height: 20px;
+                }
+                QPushButton:hover {
+                    background: rgba(157, 105, 43, 238); border-color: #e0ad5d;
+                }
+                QPushButton:pressed { background: rgba(75, 51, 27, 245); }
+                QPushButton:disabled {
+                    background: rgba(55, 47, 37, 220); color: #9a8b72;
+                    border-color: #5b4a35;
+                }
+                QLineEdit, QTextEdit, QTextBrowser, QPlainTextEdit, QComboBox {
+                    background: rgba(18, 16, 13, 232); color: #f0dfbd;
+                    border: 1px solid #76552f; border-radius: 6px;
+                    padding: 7px; selection-background-color: #a96d32;
+                    selection-color: #fff6e5;
+                }
+                QLineEdit:focus, QTextEdit:focus, QTextBrowser:focus, QComboBox:focus {
+                    border: 1px solid #d5a04e;
+                }
+                QComboBox QAbstractItemView {
+                    background: #282016; color: #f0dfbd;
+                    selection-background-color: #76502b;
+                }
+                QLabel { color: #f0dfbd; background: transparent; }
+                QSlider::groove:horizontal {
+                    height: 6px; background: #55412b; border-radius: 3px;
+                }
+                QSlider::sub-page:horizontal { background: #c28a3f; border-radius: 3px; }
+                QSlider::handle:horizontal {
+                    background: #e0ad5d; width: 16px; margin: -5px 0;
+                    border-radius: 8px; border: 2px solid #815727;
+                }
+                QCheckBox { spacing: 8px; background: transparent; }
+                QCheckBox::indicator {
+                    width: 17px; height: 17px; border-radius: 4px;
+                    border: 1px solid #987044; background: rgba(20, 17, 13, 230);
+                }
+                QCheckBox::indicator:checked {
+                    background: #a96d32; border-color: #e0ad5d;
+                }
+                QScrollBar:vertical {
+                    background: rgba(27, 22, 16, 220); width: 11px;
+                    margin: 2px; border-radius: 5px;
+                }
+                QScrollBar::handle:vertical {
+                    background: #80603a; min-height: 25px; border-radius: 5px;
+                }
+                QScrollBar::handle:vertical:hover { background: #bd8741; }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+                QStatusBar {
+                    background: rgba(20, 17, 13, 238); color: #c4a77a;
+                    border-top: 1px solid #6d4e2d;
+                }
+                QMenuBar { background: rgba(20, 17, 13, 238); color: #f0dfbd; }
+                QMenuBar::item:selected, QMenu::item:selected { background: #76502b; }
+                QMenu {
+                    background: #282016; color: #f0dfbd; border: 1px solid #76552f;
+                }
             )QSS"));
         } else {
             setStyleSheet(QStringLiteral(R"QSS(
@@ -324,6 +424,7 @@ MainWindow::MainWindow(QWidget *parent)
                          QStringLiteral("classic"));
     themeCombo->addItem(QStringLiteral("Тёмная"), QStringLiteral("dark"));
     themeCombo->addItem(QStringLiteral("Светлая"), QStringLiteral("light"));
+    themeCombo->addItem(QStringLiteral("Ржавый трактор"), QStringLiteral("rust"));
     settingsLayout->addWidget(themeCombo);
     settingsLayout->addStretch(1);
     ui->tabWidget->addTab(settingsPage, style()->standardIcon(QStyle::SP_DesktopIcon),
@@ -334,7 +435,8 @@ MainWindow::MainWindow(QWidget *parent)
     const QString savedTheme = themeSettings->value(QStringLiteral("appearance/theme"),
                                                      QStringLiteral("classic")).toString();
     const QString initialTheme = (savedTheme == QStringLiteral("light")
-                                  || savedTheme == QStringLiteral("dark"))
+                                  || savedTheme == QStringLiteral("dark")
+                                  || savedTheme == QStringLiteral("rust"))
                                      ? savedTheme : QStringLiteral("classic");
     themeCombo->setCurrentIndex(themeCombo->findData(initialTheme));
     applyTheme(initialTheme);
