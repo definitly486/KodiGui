@@ -90,6 +90,8 @@ private slots:
 
 
        void on_stopStreamlinkButton_clicked();
+       void on_killMatchTvStreamlinkButton_clicked();
+       void on_closeMatchTvPopupButton_clicked();
 
        void on_clearDrmFieldsButton_clicked();
 
