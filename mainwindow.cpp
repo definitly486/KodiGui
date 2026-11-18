@@ -2024,8 +2024,12 @@ ts() { date +%H:%M:%S; }
 echo "[$(ts)] Dynamic HLS publisher started" >> "$LOG"
 V=""; A=""
 for i in $(seq 1 90); do
-  V=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d -name '*avc1*' 2>/dev/null | head -n 1)
-  A=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d \( -name '*audio*' -o -name '*mp4a*' \) 2>/dev/null | head -n 1)
+  # N_m3u8DL-RE directory names vary by version: some use codec names
+  # (avc1/mp4a), others use track labels (video/audio). Match both forms.
+  V=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d \(
+       -iname '*video*' -o -iname '*avc1*' -o -iname '*h264*' \) 2>/dev/null | head -n 1)
+  A=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d \(
+       -iname '*audio*' -o -iname '*mp4a*' -o -iname '*aac*' \) 2>/dev/null | head -n 1)
   VI=""; AI=""
   for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
     if [ -n "$V" ] && [ -s "$candidate" ]; then VI="$candidate"; break; fi
@@ -2037,7 +2041,12 @@ for i in $(seq 1 90); do
   sleep 1
 done
 if [ -z "$V" ] || [ -z "$A" ] || [ -z "$VI" ] || [ -z "$AI" ]; then
-  echo "[$(ts)] ERROR: init segments not found (video=$V audio=$A)" >> "$LOG"; exit 1
+  echo "[$(ts)] ERROR: init segments not found (video=$V audio=$A)" >> "$LOG"
+  echo "[$(ts)] DRM output top-level entries:" >> "$LOG"
+  find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 2 -printf '%y %p\\n' 2>/dev/null | head -n 80 >> "$LOG"
+  echo "[$(ts)] Downloader log tail:" >> "$LOG"
+  tail -n 40 "$HOME/kodigui/drm-download.log" 2>/dev/null >> "$LOG"
+  exit 1
 fi
 mkdir -p "$HOME/kodigui/drm/hls"
 echo "[$(ts)] Found video=$V init=$(basename "$VI"); audio=$A init=$(basename "$AI")" >> "$LOG"
