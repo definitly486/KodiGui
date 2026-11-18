@@ -383,7 +383,7 @@ void MainWindow::clearLineEditField(QLineEdit *edit, const QString &placeholder)
 // ---------------------------------------------------------------------
 // Синхронно заливает локальный файл на Pi по SFTP через сырой TCP-сокет
 // и libssh2. Раньше этот ~70-строчный блок был продублирован дословно
-// в двух обработчиках (on_pushButton_7_clicked и on_pushButton_16_clicked).
+// в двух обработчиках (on_playIptvUrlButton_clicked и on_playMatchTvIptvButton_clicked).
 // Предназначена для вызова из фонового потока (QtConcurrent::run), как и раньше.
 // ---------------------------------------------------------------------
 bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
@@ -445,9 +445,9 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
     return ok;
 }
 
-void MainWindow::on_pushButton_clicked()
+void MainWindow::on_startKodidlpButton_clicked()
 {
-    const QString input = on_lineEdit_textChanged().trimmed();
+    const QString input = currentKodidlpUrl().trimmed();
     if (input.isEmpty()) {
         ui->textEdit_info->append(QStringLiteral("[Введите URL для kodidlp]"));
         return;
@@ -518,7 +518,7 @@ void MainWindow::on_pushButton_clicked()
 void MainWindow::on_pushButton_info_clicked()
 {
     // Получаем текст из lineEdit (с заменой vksport-ссылок на vk.ru)
-    QString input = on_lineEdit_textChanged();
+    QString input = currentKodidlpUrl();
 
     qDebug() << input;
 
@@ -556,7 +556,7 @@ void MainWindow::on_pushButton_info_clicked()
     ui->textEdit_info->setText(output + "\n" + errorOutput);
 }
 
-QString MainWindow::on_lineEdit_textChanged()
+QString MainWindow::currentKodidlpUrl()
 {
      QString input = ui->lineEdit->text();
 
@@ -570,20 +570,20 @@ QString MainWindow::on_lineEdit_textChanged()
      return input;
 }
 
-void MainWindow::on_pushButton_2_clicked()
+void MainWindow::on_playPvrChannelButton_clicked()
 {
     postPlayerOpenChannel(1);
 }
 
 
-void MainWindow::on_pushButton_3_clicked()
+void MainWindow::on_stopPvrChannelButton_clicked()
 {
     postPlayerStop();
 }
 
 
 
-void MainWindow::on_pushButton_4_clicked()
+void MainWindow::on_startKodiButton_clicked()
 {
     QStringList arguments;
     arguments << "-p"
@@ -605,7 +605,7 @@ void MainWindow::on_pushButton_4_clicked()
 
 
 
-void MainWindow::on_pushButton_6_clicked()
+void MainWindow::on_stopKodiButton_clicked()
 {
 
     QProcess process;
@@ -621,7 +621,7 @@ void MainWindow::on_pushButton_6_clicked()
 }
 
 
-void MainWindow::on_pushButton_5_clicked()
+void MainWindow::on_rebootKodiButton_clicked()
 {
     QProcess process;
     QStringList arguments;
@@ -637,14 +637,14 @@ void MainWindow::on_pushButton_5_clicked()
 
 
 
-QString  MainWindow::on_lineEdit_2_textChanged()
+QString  MainWindow::currentIptvUrl()
 {
     QString input = ui->lineEdit_2->text();
     return input;
 }
 
 
-void MainWindow::on_pushButton_7_clicked()
+void MainWindow::on_playIptvUrlButton_clicked()
 {
     // Берём текст из lineEdit_2
     QString input = ui->lineEdit_2->text();
@@ -760,7 +760,7 @@ void MainWindow::on_pushButton_7_clicked()
 }
 
 
-void MainWindow::on_pushButton_9_clicked()
+void MainWindow::on_playYoutubeFileButton_clicked()
 {
     postPlayerOpenFile("kodigui/yt.mp4");
 }
@@ -777,10 +777,10 @@ void runCommand(const QString &command, const QStringList &args) {
 }
 
 
-void MainWindow::on_pushButton_8_clicked()
+void MainWindow::on_startYoutubeDownloadButton_clicked()
 {
     const QString user = "pi@192.168.8.45";
-    const QString input = on_lineEdit_3_textChanged().trimmed();
+    const QString input = currentYoutubeUrl().trimmed();
 
     if (input.isEmpty()) {
         qWarning() << "YouTube: URL пустой";
@@ -809,38 +809,38 @@ void MainWindow::on_pushButton_8_clicked()
 }
 
 
-QString MainWindow::on_lineEdit_3_textChanged()
+QString MainWindow::currentYoutubeUrl()
 {
     QString input = ui->lineEdit_3->text();
     return input;
 }
 
 
-void MainWindow::on_pushButton_10_clicked()
+void MainWindow::on_stopYoutubePlaybackButton_clicked()
 {
     postPlayerStop();
 }
 
 
-void MainWindow::on_pushButton_11_clicked()
+void MainWindow::on_stopYtDlpButton_clicked()
 {
     sshKillProcess("yt-dlp");
 }
 
 
-void MainWindow::on_pushButton_12_clicked()
+void MainWindow::on_stopFfmpegButton_clicked()
 {
     sshKillProcess("ffmpeg");
 }
 
 
-void MainWindow::on_pushButton_13_clicked()
+void MainWindow::on_toggleIptvSimpleClientButton_clicked()
 {
     postSetAddonEnabled("pvr.iptvsimple", QJsonValue("toggle"));
 }
 
 
-void MainWindow::on_pushButton_14_clicked()
+void MainWindow::on_sendBackActionButton_clicked()
 {
     postInputAction("back");
 }
@@ -856,7 +856,7 @@ void MainWindow::on_pushButton_clearurl_clicked()
 
 
 //получение урл для матч тв
-void MainWindow::on_pushButton_15_clicked()
+void MainWindow::on_captureMatchTvUrlButton_clicked()
 {
 
 QUrl url("https://matchtv.ru/on-air");
@@ -873,7 +873,7 @@ QUrl url("https://matchtv.ru/on-air");
 
 
 }
-void MainWindow::on_pushButton_16_clicked()
+void MainWindow::on_playMatchTvIptvButton_clicked()
 {
     QString input = ui->lineEdit_4->text();
     QString filePath = "/tmp/list.m3u";
@@ -1192,12 +1192,12 @@ void MainWindow::on_getonairnow_clicked()
     pythonProcess->start(pythonCmd, QStringList() << scriptPath);
 }
 
-void MainWindow::on_playdrm_17_clicked()
+void MainWindow::on_playDrmStreamButton_clicked()
 {
     postPlayerOpenFile("kodigui/drm/hls/master.m3u8");
 }
 
-void MainWindow::on_stopdrm_18_clicked()
+void MainWindow::on_stopDrmPlaybackButton_clicked()
 {
     postPlayerStop();
 }
@@ -1206,8 +1206,8 @@ void MainWindow::on_stopdrm_18_clicked()
 void MainWindow::on_pushButton_rundrm_clicked()
 {
     const QString user = "pi@192.168.8.45";
-    QString input = on_lineEdit_drm_textChanged().trimmed();
-    QString keydrm = on_lineEdit_drm_key_textChanged().trimmed();
+    QString input = currentDrmUrl().trimmed();
+    QString keydrm = currentDrmKey().trimmed();
 
     // Если хотя бы одно поле пустое, пытаемся взять недостающие значения
     // из ~/Downloads/widevine_key.txt: первая строка — URL, вторая — key.
@@ -1547,14 +1547,14 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 }
 
 
-QString MainWindow::on_lineEdit_drm_textChanged()
+QString MainWindow::currentDrmUrl()
 {
     QString input = ui->lineEdit_drm->text();
     return input;
 }
 
 
-QString MainWindow::on_lineEdit_drm_key_textChanged()
+QString MainWindow::currentDrmKey()
 {
     QString input = ui->lineEdit_drm_key->text();
     return input;
@@ -1603,14 +1603,14 @@ void MainWindow::on_pushButton_kill_m3u8DL_clicked()
 }
 
 
-void MainWindow::on_pushButton_17_clicked()
+void MainWindow::on_closePopupButton_clicked()
 {
     postInputAction("back");
 }
 
 
 
-void MainWindow::on_pushButton_18_clicked()
+void MainWindow::on_refreshSystemMonitorButton_clicked()
 {
     QProcess *process = new QProcess(this);
 
