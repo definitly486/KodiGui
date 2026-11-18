@@ -310,7 +310,7 @@ MainWindow::MainWindow(QWidget *parent)
             qCritical().noquote() << "[Okko extensions] Cannot prepare install directory:"
                                   << installPathError;
             QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                QStringLiteral("Каталог для установки расширения недоступен.\\n"
+                QStringLiteral("Каталог для установки расширения недоступен.\n"
                                "Путь: %1\\nПричина: %2")
                     .arg(installPath, installPathError));
             return;
