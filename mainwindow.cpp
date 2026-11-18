@@ -1057,6 +1057,12 @@ void MainWindow::on_pushButton_16_clicked()
         });
 }
 
+void MainWindow::on_pushButton_play_match_file_clicked()
+{
+    qInfo() << "Match TV: manually opening /home/pi/match.mp4 in Kodi";
+    postPlayerOpenFile("match.mp4");
+}
+
 void MainWindow::on_pushButton_match_streamlink_clicked()
 {
     const QString input = ui->lineEdit_4->text().trimmed();
