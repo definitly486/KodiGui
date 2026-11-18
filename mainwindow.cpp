@@ -37,6 +37,10 @@
 #include <QLabel>
 #include <QFont>
 #include <QWidget>
+#include <QTabBar>
+#include <QList>
+#include <QHash>
+#include <QSize>
 #include <atomic>
 #include <cstdlib>
 #include <libssh2.h>
@@ -106,9 +110,14 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    // Две встроенные темы. Выбор сохраняется между запусками приложения.
-    auto applyTheme = [this](bool light) {
-        if (light) {
+    // Кнопки с тематическими иконками: в классической теме они отключаются.
+    QList<QPushButton *> themedButtons;
+    auto applyTheme = [this, &themedButtons](const QString &theme) {
+        const bool light = (theme == QStringLiteral("light"));
+        const bool classic = (theme == QStringLiteral("classic"));
+        if (classic) {
+            setStyleSheet(QString());
+        } else if (light) {
             setStyleSheet(QStringLiteral(R"QSS(
                 QWidget {
                     background-color: #f3f6fa;
@@ -127,6 +136,10 @@ MainWindow::MainWindow(QWidget *parent)
                     padding: 9px 15px; margin: 3px 3px 0 0;
                     border-top-left-radius: 7px; border-top-right-radius: 7px;
                     min-width: 66px;
+                }
+                QTabBar::tab {
+                    padding: 4px 5px; margin: 1px 1px 0 0;
+                    min-width: 0px; font-size: 8pt;
                 }
                 QTabBar::tab:selected {
                     background: #ffffff; color: #087f8c;
@@ -189,6 +202,10 @@ MainWindow::MainWindow(QWidget *parent)
                     border-bottom: none; padding: 9px 15px; margin: 3px 3px 0 0;
                     border-top-left-radius: 7px; border-top-right-radius: 7px; min-width: 66px;
                 }
+                QTabBar::tab {
+                    padding: 4px 5px; margin: 1px 1px 0 0;
+                    min-width: 0px; font-size: 8pt;
+                }
                 QTabBar::tab:selected { background: #1d2532; color: #55d6c2; border-color: #3b9e98; font-weight: 600; }
                 QTabBar::tab:hover:!selected { background: #2b394b; color: #ffffff; }
                 QPushButton {
@@ -224,9 +241,13 @@ MainWindow::MainWindow(QWidget *parent)
     };
 
     // Используем стандартные иконки Qt — дополнительных файлов и зависимостей нет.
-    auto setButtonIcon = [this](QPushButton *button, QStyle::StandardPixmap icon) {
-        if (button)
+    QHash<QPushButton *, QStyle::StandardPixmap> buttonIconMap;
+    auto setButtonIcon = [this, &themedButtons, &buttonIconMap](QPushButton *button, QStyle::StandardPixmap icon) {
+        if (button) {
             button->setIcon(style()->standardIcon(icon));
+            themedButtons.append(button);
+            buttonIconMap.insert(button, icon);
+        }
     };
     setButtonIcon(ui->startKodidlpButton, QStyle::SP_MediaPlay);
     setButtonIcon(ui->playIptvUrlButton, QStyle::SP_MediaPlay);
@@ -271,6 +292,13 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tabWidget->setTabIcon(8, style()->standardIcon(QStyle::SP_MessageBoxInformation));
     ui->tabWidget->setTabIcon(9, style()->standardIcon(QStyle::SP_MessageBoxWarning));
 
+    // Компактная панель: все разделы помещаются в одну строку без стрелок прокрутки.
+    QTabBar *tabs = ui->tabWidget->tabBar();
+    tabs->setUsesScrollButtons(false);
+    tabs->setExpanding(true);
+    tabs->setElideMode(Qt::ElideRight);
+    tabs->setIconSize(QSize(14, 14));
+
     // Отдельная вкладка настроек внешнего вида.
     auto *settingsPage = new QWidget(ui->tabWidget);
     auto *settingsLayout = new QVBoxLayout(settingsPage);
@@ -292,6 +320,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *themeCombo = new QComboBox(settingsPage);
     themeCombo->setObjectName(QStringLiteral("themeComboBox"));
+    themeCombo->addItem(QStringLiteral("Классическая (как в tab_match_vers2)"),
+                         QStringLiteral("classic"));
     themeCombo->addItem(QStringLiteral("Тёмная"), QStringLiteral("dark"));
     themeCombo->addItem(QStringLiteral("Светлая"), QStringLiteral("light"));
     settingsLayout->addWidget(themeCombo);
@@ -302,17 +332,35 @@ MainWindow::MainWindow(QWidget *parent)
     auto *themeSettings = new QSettings(QStringLiteral("definitly486"),
                                         QStringLiteral("KodiGui"), this);
     const QString savedTheme = themeSettings->value(QStringLiteral("appearance/theme"),
-                                                     QStringLiteral("dark")).toString();
-    const bool useLightTheme = (savedTheme == QStringLiteral("light"));
-    themeCombo->setCurrentIndex(useLightTheme ? 1 : 0);
-    applyTheme(useLightTheme);
+                                                     QStringLiteral("classic")).toString();
+    const QString initialTheme = (savedTheme == QStringLiteral("light")
+                                  || savedTheme == QStringLiteral("dark"))
+                                     ? savedTheme : QStringLiteral("classic");
+    themeCombo->setCurrentIndex(themeCombo->findData(initialTheme));
+    applyTheme(initialTheme);
     connect(themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [applyTheme, themeSettings](int index) {
-        const bool light = (index == 1);
-        applyTheme(light);
-        themeSettings->setValue(QStringLiteral("appearance/theme"),
-                               light ? QStringLiteral("light") : QStringLiteral("dark"));
-        qInfo() << "Appearance theme changed to" << (light ? "light" : "dark");
+            this, [this, applyTheme, themeSettings, themeCombo, themedButtons, buttonIconMap](int index) {
+        const QString theme = themeCombo->itemData(index).toString();
+        applyTheme(theme);
+        const bool classic = (theme == QStringLiteral("classic"));
+        for (QPushButton *button : themedButtons) {
+            const auto it = buttonIconMap.constFind(button);
+            if (it != buttonIconMap.cend())
+                button->setIcon(classic ? QIcon() : style()->standardIcon(it.value()));
+        }
+        // В классическом режиме возвращаем стандартные вкладки без пиктограмм.
+        const QList<QStyle::StandardPixmap> tabIcons = {
+            QStyle::SP_MediaVolume, QStyle::SP_DirLinkIcon,
+            QStyle::SP_MediaPlay, QStyle::SP_ComputerIcon,
+            QStyle::SP_ArrowDown, QStyle::SP_DialogYesButton,
+            QStyle::SP_FileDialogContentsView, QStyle::SP_ComputerIcon,
+            QStyle::SP_MessageBoxInformation, QStyle::SP_MessageBoxWarning,
+            QStyle::SP_DesktopIcon
+        };
+        for (int i = 0; i < tabIcons.size() && i < ui->tabWidget->count(); ++i)
+            ui->tabWidget->setTabIcon(i, classic ? QIcon() : style()->standardIcon(tabIcons.at(i)));
+        themeSettings->setValue(QStringLiteral("appearance/theme"), theme);
+        qInfo() << "Appearance theme changed to" << theme;
     });
 
     debugOutput = ui->debugTextEdit;
