@@ -762,7 +762,7 @@ void MainWindow::on_pushButton_7_clicked()
 
 void MainWindow::on_pushButton_9_clicked()
 {
-    postPlayerOpenFile("match.mp4");
+    postPlayerOpenFile("kodigui/yt.mp4");
 }
 
 
@@ -789,13 +789,13 @@ void MainWindow::on_pushButton_8_clicked()
 
     // Последовательность без блокировки UI
     runCommand("ssh", {user, "sudo systemctl start youtubeUnblock"});
-    runCommand("ssh", {user, "rm -f yt.mp4"});
+    runCommand("ssh", {user, "mkdir -p \"$HOME/kodigui\" && rm -f \"$HOME/kodigui/yt.mp4\""});
     runCommand("ssh", {user, "killall -9 yt-dlp || true"});
     runCommand("ssh", {user, "killall -9 ffmpeg || true"});
     runCommand("ssh", {user, "sudo systemctl restart youtubeUnblock"});
 
     const QString remoteCmd = QString(
-        "nohup $HOME/.local/bin/yt-dlp -f 269+234 %1 --no-part -o yt.mp4 "
+        "nohup $HOME/.local/bin/yt-dlp -f 269+234 %1 --no-part -o \"$HOME/kodigui/yt.mp4\" "
         "> /dev/null 2>&1 &"
     ).arg(input);
 
@@ -803,8 +803,8 @@ void MainWindow::on_pushButton_8_clicked()
 
     // Через 50 сек открываем файл в Kodi
     QTimer::singleShot(50000, this, [this]() {
-        qDebug() << "Прошло 50 секунд, открываем yt.mp4";
-        postPlayerOpenFile("match.mp4");
+        qDebug() << "Прошло 50 секунд, открываем kodigui/yt.mp4";
+        postPlayerOpenFile("kodigui/yt.mp4");
     });
 }
 
@@ -1059,8 +1059,8 @@ void MainWindow::on_pushButton_16_clicked()
 
 void MainWindow::on_pushButton_play_match_file_clicked()
 {
-    qInfo() << "Match TV: manually opening /home/pi/match.mp4 in Kodi";
-    postPlayerOpenFile("match.mp4");
+    qInfo() << "Match TV: manually opening kodigui/match.mp4 in Kodi";
+    postPlayerOpenFile("kodigui/match.mp4");
 }
 
 void MainWindow::on_pushButton_match_streamlink_clicked()
@@ -1089,17 +1089,18 @@ void MainWindow::on_pushButton_match_streamlink_clicked()
     quotedUrl.append(QLatin1Char('\''));
 
     const QString remoteCommand =
-        "if [ -s /home/pi/matchtv-streamlink.pid ]; then "
-        "  old_pid=$(cat /home/pi/matchtv-streamlink.pid); "
+        "mkdir -p \"$HOME/kodigui\"; "
+        "if [ -s \"$HOME/kodigui/matchtv-streamlink.pid\" ]; then "
+        "  old_pid=$(cat \"$HOME/kodigui/matchtv-streamlink.pid\"); "
         "  kill \"$old_pid\" 2>/dev/null || true; "
         "fi; "
         "pkill -x streamlink 2>/dev/null || true; "
         "sleep 1; "
-        "rm -f /home/pi/match.mp4; "
+        "rm -f \"$HOME/kodigui/match.mp4\"; "
         "nohup \"$HOME/.local/bin/streamlink\" " + quotedUrl +
-        " worst -f -o /home/pi/match.mp4 "
-        "> /home/pi/matchtv-streamlink.log 2>&1 < /dev/null & "
-        "echo $! > /home/pi/matchtv-streamlink.pid";
+        " worst -f -o \"$HOME/kodigui/match.mp4\" "
+        "> \"$HOME/kodigui/matchtv-streamlink.log\" 2>&1 < /dev/null & "
+        "echo $! > \"$HOME/kodigui/matchtv-streamlink.pid\"";
 
     qInfo() << "Match TV: starting Streamlink on Kodi host for URL" << streamUrl.host();
     ui->textBrowseronairnow->append(
@@ -1109,11 +1110,11 @@ void MainWindow::on_pushButton_match_streamlink_clicked()
 
     // Даём Streamlink время создать выходной файл, затем открываем его в Kodi.
     QTimer::singleShot(3000, this, [this]() {
-        qInfo() << "Match TV: opening /home/pi/match.mp4 in Kodi";
-        postPlayerOpenFile("match.mp4");
+        qInfo() << "Match TV: opening kodigui/match.mp4 in Kodi";
+        postPlayerOpenFile("kodigui/match.mp4");
         ui->textBrowseronairnow->append(
-            QStringLiteral("Команда Streamlink отправлена. Файл: /home/pi/match.mp4; "
-                           "журнал: /home/pi/matchtv-streamlink.log"));
+            QStringLiteral("Команда Streamlink отправлена. Файл: $HOME/kodigui/match.mp4; "
+                           "журнал: $HOME/kodigui/matchtv-streamlink.log"));
     });
 }
 
@@ -1193,7 +1194,7 @@ void MainWindow::on_getonairnow_clicked()
 
 void MainWindow::on_playdrm_17_clicked()
 {
-    postPlayerOpenFile("drm/hls/master.m3u8");
+    postPlayerOpenFile("kodigui/drm/hls/master.m3u8");
 }
 
 void MainWindow::on_stopdrm_18_clicked()
@@ -1261,13 +1262,13 @@ void MainWindow::on_pushButton_rundrm_clicked()
     const QString assembleScriptBody = QString::fromUtf8(R"DRM_HLS_SCRIPT(
 #!/bin/bash
 set -u
-LOG=/tmp/drm-mux.log
+LOG=$HOME/kodigui/drm-mux.log
 ts() { date +%H:%M:%S; }
 echo "[$(ts)] Dynamic HLS publisher started" >> "$LOG"
 V=""; A=""
 for i in $(seq 1 90); do
-  V=$(find "$HOME/drm" -mindepth 1 -maxdepth 1 -type d -name '*avc1*' 2>/dev/null | head -n 1)
-  A=$(find "$HOME/drm" -mindepth 1 -maxdepth 1 -type d \( -name '*audio*' -o -name '*mp4a*' \) 2>/dev/null | head -n 1)
+  V=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d -name '*avc1*' 2>/dev/null | head -n 1)
+  A=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d \( -name '*audio*' -o -name '*mp4a*' \) 2>/dev/null | head -n 1)
   VI=""; AI=""
   for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
     if [ -n "$V" ] && [ -s "$candidate" ]; then VI="$candidate"; break; fi
@@ -1281,15 +1282,15 @@ done
 if [ -z "$V" ] || [ -z "$A" ] || [ -z "$VI" ] || [ -z "$AI" ]; then
   echo "[$(ts)] ERROR: init segments not found (video=$V audio=$A)" >> "$LOG"; exit 1
 fi
-mkdir -p "$HOME/drm/hls"
+mkdir -p "$HOME/kodigui/drm/hls"
 echo "[$(ts)] Found video=$V init=$(basename "$VI"); audio=$A init=$(basename "$AI")" >> "$LOG"
 LAST_V=0; LAST_A=0
 while true; do
   dp=""
-  [ -s "$HOME/drm_download.pid" ] && dp=$(cat "$HOME/drm_download.pid" 2>/dev/null || true)
+  [ -s "$HOME/kodigui/drm_download.pid" ] && dp=$(cat "$HOME/kodigui/drm_download.pid" 2>/dev/null || true)
   finished=0
   if [ -z "$dp" ] || ! kill -0 "$dp" 2>/dev/null; then finished=1; fi
-  python3 - "$V" "$A" "$HOME/drm" "$finished" <<'PY_BUILDER'
+  python3 - "$V" "$A" "$HOME/kodigui/drm" "$finished" <<'PY_BUILDER'
 import glob, math, os, pathlib, sys, tempfile, time
 vdir, adir, root, finished = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3]), sys.argv[4] == '1'
 out = root / 'hls'
@@ -1425,43 +1426,43 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
     const QString remoteCmd =
         // Останавливаем старые процессы, затем только после этого удаляем старые файлы.
-        "if [ -s \"$HOME/drm_mux.pid\" ]; then "
-        "  old_mux=$(cat \"$HOME/drm_mux.pid\"); "
+        "if [ -s \"$HOME/kodigui/drm_mux.pid\" ]; then "
+        "  old_mux=$(cat \"$HOME/kodigui/drm_mux.pid\"); "
         "  kill -TERM -- -\"$old_mux\" 2>/dev/null || true; "
         "fi; "
-        "if [ -s \"$HOME/drm_download.pid\" ]; then "
-        "  old_dl=$(cat \"$HOME/drm_download.pid\"); "
+        "if [ -s \"$HOME/kodigui/drm_download.pid\" ]; then "
+        "  old_dl=$(cat \"$HOME/kodigui/drm_download.pid\"); "
         "  kill -TERM \"$old_dl\" 2>/dev/null || true; "
         "fi; "
         "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
         "sleep 1; "
-        "rm -f \"$HOME/drm_mux.pid\" \"$HOME/drm_download.pid\" "
-        "      \"$HOME/drm.mp4\" \"$HOME/master.m3u8\" \"$HOME/drm.ts\" \"$HOME/drm.aar.ts\" "
-        "      /tmp/drm-assemble.sh; "
-        "rm -rf \"$HOME/drm\"; "
-        "mkdir -p \"$HOME/drm/hls\"; "
-        "printf '%s\\n' " + shellQuote(runId) + " > \"$HOME/drm/hls/.run-id\"; "
-        ": > /tmp/drm-download.log; "
-        ": > /tmp/drm-mux.log; "
+        "rm -f \"$HOME/kodigui/drm_mux.pid\" \"$HOME/kodigui/drm_download.pid\" "
+        "      \"$HOME/kodigui/drm.mp4\" \"$HOME/master.m3u8\" \"$HOME/kodigui/drm.ts\" \"$HOME/kodigui/drm.aar.ts\" "
+        "      $HOME/kodigui/drm-assemble.sh; "
+        "rm -rf \"$HOME/kodigui/drm\"; "
+        "mkdir -p \"$HOME/kodigui/drm/hls\"; "
+        "printf '%s\\n' " + shellQuote(runId) + " > \"$HOME/kodigui/drm/hls/.run-id\"; "
+        ": > $HOME/kodigui/drm-download.log; "
+        ": > $HOME/kodigui/drm-mux.log; "
         // Пишем скрипт сборщика в файл (без проблем с кавычками).
-        "cat > /tmp/drm-assemble.sh << 'ASSEMBLE_EOF'\n" +
+        "cat > $HOME/kodigui/drm-assemble.sh << 'ASSEMBLE_EOF'\n" +
         assembleScriptBody +
         "ASSEMBLE_EOF\n"
-        "chmod +x /tmp/drm-assemble.sh; "
-        // Загрузчик: расшифрованные сегменты в $HOME/drm (без live-pipe-mux).
+        "chmod +x $HOME/kodigui/drm-assemble.sh; "
+        // Загрузчик: расшифрованные сегменты в $HOME/kodigui/drm (без live-pipe-mux).
         "nohup N_m3u8DL-RE " + shellQuote(input) +
         " --key " + shellQuote(keydrm) +
         " -sv worst "
-        "--save-name drm --save-dir \"$HOME/drm\" "
+        "--save-name drm --save-dir \"$HOME/kodigui/drm\" "
         "--mp4-real-time-decryption "
         "--live-keep-segments "
         "--select-audio id='audio_aar=128000' "
-        "> /tmp/drm-download.log 2>&1 < /dev/null & "
-        "echo $! > \"$HOME/drm_download.pid\"; "
+        "> $HOME/kodigui/drm-download.log 2>&1 < /dev/null & "
+        "echo $! > \"$HOME/kodigui/drm_download.pid\"; "
         // Публикатор динамических HLS-плейлистов → drm/hls/master.m3u8
-        "nohup setsid /tmp/drm-assemble.sh "
-        "> /tmp/drm-mux.log 2>&1 < /dev/null & "
-        "echo $! > \"$HOME/drm_mux.pid\"";
+        "nohup setsid $HOME/kodigui/drm-assemble.sh "
+        "> $HOME/kodigui/drm-mux.log 2>&1 < /dev/null & "
+        "echo $! > \"$HOME/kodigui/drm_mux.pid\"";
 
     runCommand("ssh", {user, remoteCmd});
 
@@ -1511,7 +1512,7 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                 drmFileCheckTimer->stop();
                 QMessageBox::warning(this, "DRM",
                     "За ~2 минуты HLS-плейлист не появился.\n"
-                    "Проверьте /tmp/drm-download.log и /tmp/drm-mux.log на Raspberry Pi.");
+                    "Проверьте $HOME/kodigui/drm-download.log и $HOME/kodigui/drm-mux.log на Raspberry Pi.");
                 return;
             }
 
@@ -1519,19 +1520,19 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                 qInfo() << "Checking remote DRM output and assembler status";
                 drmFileCheckProcess->start("ssh", {
                     "pi@192.168.8.45",
-                    "if [ -s \"$HOME/drm/hls/.run-id\" ] && "
-                    "   [ \"$(cat \"$HOME/drm/hls/.run-id\" 2>/dev/null)\" = " + shellQuote(runId) + " ]; then "
-                    "  if [ -s \"$HOME/drm/hls/master.m3u8\" ] && "
-                    "     [ -s \"$HOME/drm/hls/video.m3u8\" ] && "
-                    "     [ -s \"$HOME/drm/hls/audio.m3u8\" ] && "
-                    "     grep -q \"#EXTINF:\" \"$HOME/drm/hls/video.m3u8\" && "
-                    "     grep -q \"#EXTINF:\" \"$HOME/drm/hls/audio.m3u8\"; then "
+                    "if [ -s \"$HOME/kodigui/drm/hls/.run-id\" ] && "
+                    "   [ \"$(cat \"$HOME/kodigui/drm/hls/.run-id\" 2>/dev/null)\" = " + shellQuote(runId) + " ]; then "
+                    "  if [ -s \"$HOME/kodigui/drm/hls/master.m3u8\" ] && "
+                    "     [ -s \"$HOME/kodigui/drm/hls/video.m3u8\" ] && "
+                    "     [ -s \"$HOME/kodigui/drm/hls/audio.m3u8\" ] && "
+                    "     grep -q \"#EXTINF:\" \"$HOME/kodigui/drm/hls/video.m3u8\" && "
+                    "     grep -q \"#EXTINF:\" \"$HOME/kodigui/drm/hls/audio.m3u8\"; then "
                     "    echo DRM_HLS_READY; "
-                    "  elif [ -s \"$HOME/drm_mux.pid\" ]; then "
-                    "    p=$(cat \"$HOME/drm_mux.pid\"); "
+                    "  elif [ -s \"$HOME/kodigui/drm_mux.pid\" ]; then "
+                    "    p=$(cat \"$HOME/kodigui/drm_mux.pid\"); "
                     "    if ! kill -0 -- -\"$p\" 2>/dev/null; then "
                     "      echo DRM_MUX_FAILED; "
-                    "      tail -n 25 /tmp/drm-mux.log; "
+                    "      tail -n 25 $HOME/kodigui/drm-mux.log; "
                     "    fi; "
                     "  fi; "
                     "fi"
@@ -1575,7 +1576,7 @@ void MainWindow::on_pushButton_cleardrm_clicked()
 
 void MainWindow::on_pushButton_playdrm_clicked()
 {
-    postPlayerOpenFile("drm/hls/master.m3u8");
+    postPlayerOpenFile("kodigui/drm/hls/master.m3u8");
 }
 
 
@@ -1588,17 +1589,17 @@ void MainWindow::on_pushButton_kill_m3u8DL_clicked()
 
     // Остановка загрузчика и сборщика сегментов на удалённом устройстве.
     runCommand("ssh", {"pi@192.168.8.45",
-        "if [ -s \"$HOME/drm_mux.pid\" ]; then "
-        "  p=$(cat \"$HOME/drm_mux.pid\"); "
+        "if [ -s \"$HOME/kodigui/drm_mux.pid\" ]; then "
+        "  p=$(cat \"$HOME/kodigui/drm_mux.pid\"); "
         "  kill -TERM -- -\"$p\" 2>/dev/null || true; "
         "fi; "
-        "if [ -s \"$HOME/drm_download.pid\" ]; then "
-        "  p=$(cat \"$HOME/drm_download.pid\"); "
+        "if [ -s \"$HOME/kodigui/drm_download.pid\" ]; then "
+        "  p=$(cat \"$HOME/kodigui/drm_download.pid\"); "
         "  kill -TERM \"$p\" 2>/dev/null || true; "
         "fi; "
         "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
-        "rm -f \"$HOME/drm_mux.pid\" \"$HOME/drm_download.pid\" "
-        "      /tmp/drm-assemble.sh"});
+        "rm -f \"$HOME/kodigui/drm_mux.pid\" \"$HOME/kodigui/drm_download.pid\" "
+        "      $HOME/kodigui/drm-assemble.sh"});
 }
 
 
