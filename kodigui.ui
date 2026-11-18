@@ -777,8 +777,7 @@
             <widget class="QLabel" name="mousePadHintLabel">
              <property name="text"><string>ПАНЕЛЬ УПРАВЛЕНИЯ\nНажатие — OK\nСвайп — навигация</string></property>
              <property name="alignment"><set>Qt::AlignCenter</set></property>
-             <property name="attribute" stdset="0"><enum>Qt::WA_TransparentForMouseEvents</enum></property>
-            </widget>
+               </widget>
            </item>
            <item>
             <spacer name="mousePadBottomSpacer">
