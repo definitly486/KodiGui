@@ -447,8 +447,7 @@ MainWindow::MainWindow(QWidget *parent)
             button->setIcon(QIcon());
         for (int i = 0; i < ui->tabWidget->count(); ++i)
             ui->tabWidget->setTabIcon(i, QIcon());
-    }
-    connect(themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    }    connect(themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this, applyTheme, themeSettings, themeCombo, themedButtons, buttonIconMap](int index) {
         const QString theme = themeCombo->itemData(index).toString();
         applyTheme(theme);
@@ -898,7 +897,6 @@ void MainWindow::on_showStreamlinkInfoButton_clicked()
     qDebug() << input;
 
     QProcess process;
-
     // Формируем аргументы для streamlink
     QStringList arguments;
     arguments << input;
@@ -1158,31 +1156,42 @@ void MainWindow::on_startYoutubeDownloadButton_clicked()
     const QString input = currentYoutubeUrl().trimmed();
 
     if (input.isEmpty()) {
-        qWarning() << "YouTube: URL пустой";
+        QMessageBox::warning(this, "YouTube", "Введите live URL.");
         return;
     }
 
-    // Последовательность без блокировки UI
-    runCommand("ssh", {user, "sudo systemctl start youtubeUnblock"});
-    runCommand("ssh", {user, "mkdir -p \"$HOME/kodigui\" && rm -f \"$HOME/kodigui/yt.mp4\""});
-    runCommand("ssh", {user, "killall -9 yt-dlp || true"});
-    runCommand("ssh", {user, "killall -9 ffmpeg || true"});
-    runCommand("ssh", {user, "sudo systemctl restart youtubeUnblock"});
+    // Экранируем URL для удалённой shell-команды, чтобы символы в ссылке
+    // не интерпретировались оболочкой.
+    auto shellQuote = [](const QString &value) {
+        QString escaped = value;
+        escaped.replace("'", "'\\''");
+        return "'" + escaped + "'";
+    };
 
-    const QString remoteCmd = QString(
-        "mkdir -p \"$HOME/kodigui\" && nohup $HOME/.local/bin/yt-dlp -f 269+234 %1 --no-part -o \"$HOME/kodigui/yt.mp4\" "
-        "> /dev/null 2>&1 &"
-    ).arg(input);
+    // Последовательно останавливаем старую загрузку, очищаем старый файл
+    // и запускаем yt-dlp с параметрами, заданными для YouTube-вкладки.
+    const QString remoteCmd =
+        "sudo systemctl start youtubeUnblock; "
+        "mkdir -p \"$HOME/kodigui\"; "
+        "killall -9 yt-dlp 2>/dev/null || true; "
+        "killall -9 ffmpeg 2>/dev/null || true; "
+        "rm -f \"$HOME/kodigui/yt.mp4\" \"$HOME/kodigui/yt.part\"; "
+        "sudo systemctl restart youtubeUnblock; "
+        "nohup \"$HOME/.local/bin/yt-dlp\" --js-runtimes deno "
+        "-f '231+234' --merge-output-format mp4 "
+        "--no-part --force-overwrites "
+        + shellQuote(input) +
+        " -o \"$HOME/kodigui/yt\" "
+        "> \"$HOME/kodigui/yt-dlp.log\" 2>&1 < /dev/null &";
 
     runCommand("ssh", {user, remoteCmd});
 
-    // Через 50 сек открываем файл в Kodi
+    // Через 50 секунд открываем загруженный файл в Kodi (как и раньше).
     QTimer::singleShot(50000, this, [this]() {
-        qDebug() << "Прошло 50 секунд, открываем kodigui/yt.mp4";
+        qDebug() << "Прошло 50 секунд, открываем /home/pi/kodigui/yt.mp4";
         postPlayerOpenFile("/home/pi/kodigui/yt.mp4");
     });
 }
-
 
 QString MainWindow::currentYoutubeUrl()
 {
@@ -1347,8 +1356,7 @@ void MainWindow::on_playMatchTvIptvButton_clicked()
                                 else
                                     qDebug() << "Match TV: playback started";
                             });
-                    });
-            });
+                    });            });
     };
 
     // ---- Шаг 5: ждём, пока PVR-менеджер Kodi реально поднимется ----------
@@ -1797,7 +1805,6 @@ PY_BUILDER
 done
 echo "[$(ts)] HLS publisher finished" >> "$LOG"
 )DRM_HLS_SCRIPT");
-
     // Уникальный маркер не позволяет принять плейлист от предыдущего запуска.
     const QString runId = QString::number(QDateTime::currentMSecsSinceEpoch());
 
@@ -2025,5 +2032,4 @@ void MainWindow::on_refreshSystemMonitorButton_clicked()
     ui->textEdit->clear();
     process->start(program, arguments);
 }
-
 
