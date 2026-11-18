@@ -616,6 +616,13 @@
              </widget>
             </item>
             <item>
+             <widget class="QPushButton" name="pushButton_play_match_file">
+              <property name="text">
+               <string>Play match.mp4</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <spacer name="matchSp">
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
