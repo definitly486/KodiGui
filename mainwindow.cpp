@@ -2022,30 +2022,68 @@ set -u
 LOG="$HOME/kodigui/drm-mux.log"
 ts() { date +%H:%M:%S; }
 echo "[$(ts)] Dynamic HLS publisher started" >> "$LOG"
+TASK_ROOT="$HOME/kodigui/drm/tmp/drm"
 V=""; A=""
-for i in $(seq 1 90); do
-  # N_m3u8DL-RE directory names vary by version: some use codec names
-  # (avc1/mp4a), others use track labels (video/audio). Match both forms.
-  V=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d \(
-       -iname '*video*' -o -iname '*avc1*' -o -iname '*h264*' \) 2>/dev/null | head -n 1)
-  A=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d \(
-       -iname '*audio*' -o -iname '*mp4a*' -o -iname '*aac*' \) 2>/dev/null | head -n 1)
-  VI=""; AI=""
-  for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
-    if [ -n "$V" ] && [ -s "$candidate" ]; then VI="$candidate"; break; fi
-  done
-  for candidate in "$A/_init_dec.mp4" "$A/_init.mp4"; do
-    if [ -n "$A" ] && [ -s "$candidate" ]; then AI="$candidate"; break; fi
-  done
-  if [ -n "$VI" ] && [ -n "$AI" ]; then break; fi
+for i in $(seq 1 120); do
+  # N_m3u8DL-RE stores live tracks under <tmp-dir>/<save-name>/<track>.
+  # Discover recursively because track folder names vary between releases.
+  TRACKS=$(python3 - "$TASK_ROOT" <<'PY_TRACK_DISCOVERY'
+import os, pathlib, subprocess, sys
+base = pathlib.Path(sys.argv[1])
+video = audio = ""
+for current, dirs, names in os.walk(base):
+    here = pathlib.Path(current)
+    init = next((here / n for n in ("_init_dec.mp4", "_init.mp4")
+                 if (here / n).is_file()), None)
+    if init is None or not any(n.endswith(".m4s") for n in names):
+        continue
+    label = here.name.lower()
+    kind = ""
+    if any(token in label for token in ("video", "avc1", "h264")):
+        kind = "video"
+    elif any(token in label for token in ("audio", "mp4a", "aac")):
+        kind = "audio"
+    else:
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                 "-of", "csv=p=0", str(init)],
+                capture_output=True, text=True, timeout=5)
+            media = set(probe.stdout.lower().split())
+            if "video" in media:
+                kind = "video"
+            elif "audio" in media:
+                kind = "audio"
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if kind == "video" and not video:
+        video = current
+    elif kind == "audio" and not audio:
+        audio = current
+print(video)
+print(audio)
+PY_TRACK_DISCOVERY
+)
+  V=$(printf '%s\\n' "$TRACKS" | sed -n '1p')
+  A=$(printf '%s\\n' "$TRACKS" | sed -n '2p')
+  if [ -n "$V" ] && [ -n "$A" ]; then
+    VI=""; AI=""
+    for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
+      if [ -s "$candidate" ]; then VI="$candidate"; break; fi
+    done
+    for candidate in "$A/_init_dec.mp4" "$A/_init.mp4"; do
+      if [ -s "$candidate" ]; then AI="$candidate"; break; fi
+    done
+    if [ -n "$VI" ] && [ -n "$AI" ]; then break; fi
+  fi
   sleep 1
 done
 if [ -z "$V" ] || [ -z "$A" ] || [ -z "$VI" ] || [ -z "$AI" ]; then
-  echo "[$(ts)] ERROR: init segments not found (video=$V audio=$A)" >> "$LOG"
-  echo "[$(ts)] DRM output top-level entries:" >> "$LOG"
-  find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 2 -printf '%y %p\n' 2>/dev/null | head -n 80 >> "$LOG"
+  echo "[$(ts)] ERROR: live track folders/init segments not found (task_root=$TASK_ROOT video=$V audio=$A)" >> "$LOG"
+  echo "[$(ts)] DRM output tree:" >> "$LOG"
+  find "$HOME/kodigui/drm" -maxdepth 5 -type f 2>/dev/null | head -n 120 >> "$LOG"
   echo "[$(ts)] Downloader log tail:" >> "$LOG"
-  tail -n 40 "$HOME/kodigui/drm-download.log" 2>/dev/null >> "$LOG"
+  tail -n 50 "$HOME/kodigui/drm-download.log" 2>/dev/null >> "$LOG"
   exit 1
 fi
 mkdir -p "$HOME/kodigui/drm/hls"
@@ -2219,7 +2257,9 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
         " --key " + shellQuote(keydrm) +
         " -sv worst "
         "--save-name drm --save-dir \"$HOME/kodigui/drm\" "
+        "--tmp-dir \"$HOME/kodigui/drm/tmp\" "
         "--mp4-real-time-decryption "
+        "--live-real-time-merge "
         "--live-keep-segments "
         "--select-audio id='audio_aar=128000' "
         "> \"$HOME/kodigui/drm-download.log\" 2>&1 < /dev/null & "
