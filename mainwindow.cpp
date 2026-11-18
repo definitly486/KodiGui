@@ -29,6 +29,8 @@
 #include <QTextEdit>
 #include <QScrollBar>
 #include <QCheckBox>
+#include <QStyle>
+#include <QIcon>
 #include <atomic>
 #include <cstdlib>
 #include <libssh2.h>
@@ -97,6 +99,139 @@ MainWindow::MainWindow(QWidget *parent)
     , manager(new QNetworkAccessManager(this))
 {
     ui->setupUi(this);
+
+    // Единый тёмный интерфейс: графитовый фон, контрастные поля и бирюзовый акцент.
+    setStyleSheet(QStringLiteral(R"QSS(
+        QWidget {
+            background-color: #171c26;
+            color: #e6edf7;
+            font-family: "Noto Sans", "DejaVu Sans", sans-serif;
+            font-size: 10pt;
+        }
+        QMainWindow, QWidget#centralwidget { background-color: #171c26; }
+        QTabWidget::pane {
+            border: 1px solid #303b4d;
+            border-radius: 9px;
+            top: -1px;
+            background: #1d2532;
+        }
+        QTabBar::tab {
+            background: #222c3a;
+            color: #aebbd0;
+            border: 1px solid #303b4d;
+            border-bottom: none;
+            padding: 9px 15px;
+            margin: 3px 3px 0 0;
+            border-top-left-radius: 7px;
+            border-top-right-radius: 7px;
+            min-width: 66px;
+        }
+        QTabBar::tab:selected {
+            background: #1d2532;
+            color: #55d6c2;
+            border-color: #3b9e98;
+            font-weight: 600;
+        }
+        QTabBar::tab:hover:!selected { background: #2b394b; color: #ffffff; }
+        QPushButton {
+            background: #29384b;
+            color: #edf5ff;
+            border: 1px solid #3b5069;
+            border-radius: 7px;
+            padding: 7px 13px;
+            min-height: 20px;
+        }
+        QPushButton:hover { background: #354b63; border-color: #55b8b0; }
+        QPushButton:pressed { background: #1d756f; }
+        QPushButton:disabled { background: #252d39; color: #68778b; border-color: #303947; }
+        QLineEdit, QTextEdit, QTextBrowser, QPlainTextEdit {
+            background: #101722;
+            color: #dce8f5;
+            border: 1px solid #35445a;
+            border-radius: 7px;
+            padding: 7px;
+            selection-background-color: #237f7a;
+            selection-color: #ffffff;
+        }
+        QLineEdit:focus, QTextEdit:focus, QTextBrowser:focus {
+            border: 1px solid #55c9bc;
+        }
+        QLabel { color: #bdc9d9; }
+        QSlider::groove:horizontal {
+            height: 6px; background: #35445a; border-radius: 3px;
+        }
+        QSlider::sub-page:horizontal { background: #35b8aa; border-radius: 3px; }
+        QSlider::handle:horizontal {
+            background: #69e0d0; width: 16px; margin: -5px 0;
+            border-radius: 8px; border: 2px solid #1d756f;
+        }
+        QCheckBox { spacing: 8px; }
+        QCheckBox::indicator {
+            width: 17px; height: 17px; border-radius: 4px;
+            border: 1px solid #52647b; background: #101722;
+        }
+        QCheckBox::indicator:checked { background: #269b8f; border-color: #55d6c2; }
+        QScrollBar:vertical {
+            background: #171f2b; width: 11px; margin: 2px; border-radius: 5px;
+        }
+        QScrollBar::handle:vertical { background: #43546b; min-height: 25px; border-radius: 5px; }
+        QScrollBar::handle:vertical:hover { background: #55a99f; }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+        QStatusBar { background: #121923; color: #8293aa; border-top: 1px solid #303b4d; }
+        QMenuBar { background: #121923; color: #dce8f5; }
+        QMenuBar::item:selected, QMenu::item:selected { background: #285c60; }
+        QMenu { background: #202a38; color: #e6edf7; border: 1px solid #3b5069; }
+    )QSS"));
+
+    // Используем стандартные иконки Qt — дополнительных файлов и зависимостей нет.
+    auto setButtonIcon = [this](QPushButton *button, QStyle::StandardPixmap icon) {
+        if (button)
+            button->setIcon(style()->standardIcon(icon));
+    };
+    setButtonIcon(ui->startKodidlpButton, QStyle::SP_MediaPlay);
+    setButtonIcon(ui->playIptvUrlButton, QStyle::SP_MediaPlay);
+    setButtonIcon(ui->playPvrChannelButton, QStyle::SP_MediaPlay);
+    setButtonIcon(ui->playDrmStreamButton, QStyle::SP_MediaPlay);
+    setButtonIcon(ui->playDrmHlsButton, QStyle::SP_MediaPlay);
+    setButtonIcon(ui->playYoutubeFileButton, QStyle::SP_MediaPlay);
+    setButtonIcon(ui->playMatchTvFileButton, QStyle::SP_MediaPlay);
+    setButtonIcon(ui->playMatchTvIptvButton, QStyle::SP_MediaPlay);
+    setButtonIcon(ui->startYoutubeDownloadButton, QStyle::SP_ArrowDown);
+    setButtonIcon(ui->startMatchTvStreamlinkButton, QStyle::SP_ArrowDown);
+    setButtonIcon(ui->startDrmDownloadButton, QStyle::SP_ArrowDown);
+    setButtonIcon(ui->captureMatchTvUrlButton, QStyle::SP_FileDialogDetailedView);
+    setButtonIcon(ui->getonairnow, QStyle::SP_BrowserReload);
+    setButtonIcon(ui->refreshSystemMonitorButton, QStyle::SP_BrowserReload);
+    setButtonIcon(ui->stopPvrChannelButton, QStyle::SP_MediaStop);
+    setButtonIcon(ui->stopDrmPlaybackButton, QStyle::SP_MediaStop);
+    setButtonIcon(ui->stopYoutubePlaybackButton, QStyle::SP_MediaStop);
+    setButtonIcon(ui->stopYtDlpButton, QStyle::SP_BrowserStop);
+    setButtonIcon(ui->stopFfmpegButton, QStyle::SP_BrowserStop);
+    setButtonIcon(ui->stopStreamlinkButton, QStyle::SP_BrowserStop);
+    setButtonIcon(ui->stopDrmDownloadButton, QStyle::SP_BrowserStop);
+    setButtonIcon(ui->clearUrlFieldsButton, QStyle::SP_DialogResetButton);
+    setButtonIcon(ui->clearDrmFieldsButton, QStyle::SP_DialogResetButton);
+    setButtonIcon(ui->debugClearButton, QStyle::SP_DialogResetButton);
+    setButtonIcon(ui->startKodiButton, QStyle::SP_MediaPlay);
+    setButtonIcon(ui->stopKodiButton, QStyle::SP_MediaStop);
+    setButtonIcon(ui->rebootKodiButton, QStyle::SP_BrowserReload);
+    setButtonIcon(ui->toggleIptvSimpleClientButton, QStyle::SP_DialogApplyButton);
+    setButtonIcon(ui->closePopupButton, QStyle::SP_DialogCloseButton);
+    setButtonIcon(ui->sendBackActionButton, QStyle::SP_DialogCloseButton);
+    setButtonIcon(ui->showStreamlinkInfoButton, QStyle::SP_MessageBoxInformation);
+
+    auto *tabBar = ui->tabWidget->tabBar();
+    tabBar->setIconSize(QSize(16, 16));
+    tabBar->setTabIcon(0, style()->standardIcon(QStyle::SP_MediaVolume));
+    tabBar->setTabIcon(1, style()->standardIcon(QStyle::SP_DirLinkIcon));
+    tabBar->setTabIcon(2, style()->standardIcon(QStyle::SP_MediaPlay));
+    tabBar->setTabIcon(3, style()->standardIcon(QStyle::SP_ComputerIcon));
+    tabBar->setTabIcon(4, style()->standardIcon(QStyle::SP_ArrowDown));
+    tabBar->setTabIcon(5, style()->standardIcon(QStyle::SP_DialogYesButton));
+    tabBar->setTabIcon(6, style()->standardIcon(QStyle::SP_FileDialogContentsView));
+    tabBar->setTabIcon(7, style()->standardIcon(QStyle::SP_ComputerIcon));
+    tabBar->setTabIcon(8, style()->standardIcon(QStyle::SP_MessageBoxInformation));
+    tabBar->setTabIcon(9, style()->standardIcon(QStyle::SP_MessageBoxWarning));
 
     debugOutput = ui->debugTextEdit;
     ui->debugTextEdit->document()->setMaximumBlockCount(15000);
