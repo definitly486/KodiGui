@@ -1090,7 +1090,7 @@ void MainWindow::on_pushButton_match_streamlink_clicked()
         "pkill -x streamlink 2>/dev/null || true; "
         "sleep 1; "
         "rm -f /home/pi/match.mp4; "
-        "nohup streamlink " + quotedUrl +
+        "nohup \"$HOME/.local/bin/streamlink\" " + quotedUrl +
         " worst -f -o /home/pi/match.mp4 "
         "> /home/pi/matchtv-streamlink.log 2>&1 < /dev/null & "
         "echo $! > /home/pi/matchtv-streamlink.pid";
