@@ -127,6 +127,14 @@ MainWindow::MainWindow(QWidget *parent)
     okkoView->settings()->setAttribute(QWebEngineSettings::PlaybackRequiresUserGesture, false);
     ui->tabWidget->addTab(okkoView, QStringLiteral("okko.tv"));
 
+    // Keep every tab caption readable. On narrow screens Qt will scroll the
+    // tab bar instead of shortening labels with an ellipsis.
+    if (QTabBar *tabBar = ui->tabWidget->tabBar()) {
+        tabBar->setElideMode(Qt::ElideNone);
+        tabBar->setExpanding(false);
+        tabBar->setUsesScrollButtons(true);
+    }
+
     // Диагностика загрузки Okko. Ошибки сертификатов только журналируем
     // и оставляем отклонёнными: проверку TLS намеренно не отключаем.
     connect(okkoView, &QWebEngineView::loadStarted, this, []() {
