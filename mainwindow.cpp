@@ -268,7 +268,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(installOkkoExtensionButton, &QPushButton::clicked, this,
-            [this, okkoExtensionStatus]() {
+            [this, okkoExtensionStatus, ensureWritableDirectory]() {
         const QString extensionPath = QFileDialog::getExistingDirectory(
             this, QStringLiteral("Выберите папку расширения с manifest.json"),
             QDir::homePath());
