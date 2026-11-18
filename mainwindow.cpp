@@ -154,8 +154,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
         qInfo() << "kodidlp finished; exitCode=" << exitCode
                  << "exitStatus=" << exitStatus;
-        ui->pushButton->setEnabled(true);
-        ui->pushButton->setText(QStringLiteral("run"));
+        ui->startKodidlpButton->setEnabled(true);
+        ui->startKodidlpButton->setText(QStringLiteral("run"));
         ui->textEdit_info->append(
             exitStatus == QProcess::NormalExit && exitCode == 0
                 ? QStringLiteral("\n[kodidlp завершился успешно]")
@@ -165,8 +165,8 @@ MainWindow::MainWindow(QWidget *parent)
         qCritical() << "kodidlp process error:" << error
                     << kodidlpProcess->errorString();
         if (error == QProcess::FailedToStart) {
-            ui->pushButton->setEnabled(true);
-            ui->pushButton->setText(QStringLiteral("run"));
+            ui->startKodidlpButton->setEnabled(true);
+            ui->startKodidlpButton->setText(QStringLiteral("run"));
             ui->textEdit_info->append(
                 QStringLiteral("[Не удалось запустить kodidlp: %1]")
                     .arg(kodidlpProcess->errorString()));
@@ -468,8 +468,8 @@ void MainWindow::on_startKodidlpButton_clicked()
     };
 
     ui->textEdit_info->append(QStringLiteral("[Проверка IPTV Simple Client...]"));
-    ui->pushButton->setEnabled(false);
-    ui->pushButton->setText(QStringLiteral("Проверка..."));
+    ui->startKodidlpButton->setEnabled(false);
+    ui->startKodidlpButton->setText(QStringLiteral("Проверка..."));
 
     sendJsonRpc(check, "Check IPTV Simple Client before kodidlp",
                 [this, input](const QJsonObject &response) {
@@ -479,8 +479,8 @@ void MainWindow::on_startKodidlpButton_clicked()
             ui->textEdit_info->append(
                 QStringLiteral("[Не удалось проверить IPTV Simple Client: %1]")
                     .arg(details.isEmpty() ? QStringLiteral("неизвестная ошибка") : details));
-            ui->pushButton->setEnabled(true);
-            ui->pushButton->setText(QStringLiteral("run"));
+            ui->startKodidlpButton->setEnabled(true);
+            ui->startKodidlpButton->setText(QStringLiteral("run"));
             QMessageBox::warning(
                 this,
                 QStringLiteral("IPTV Simple Client"),
@@ -494,8 +494,8 @@ void MainWindow::on_startKodidlpButton_clicked()
         if (addon.isEmpty() || !addon["enabled"].toBool(false)) {
             ui->textEdit_info->append(
                 QStringLiteral("[IPTV Simple Client выключен — запуск kodidlp отменён]"));
-            ui->pushButton->setEnabled(true);
-            ui->pushButton->setText(QStringLiteral("run"));
+            ui->startKodidlpButton->setEnabled(true);
+            ui->startKodidlpButton->setText(QStringLiteral("run"));
             QMessageBox::warning(
                 this,
                 QStringLiteral("IPTV Simple Client выключен"),
@@ -510,7 +510,7 @@ void MainWindow::on_startKodidlpButton_clicked()
         ui->textEdit_info->clear();
         ui->textEdit_info->append(QStringLiteral("[IPTV Simple Client включён]"));
         ui->textEdit_info->append(QStringLiteral("[Запуск kodidlp...]"));
-        ui->pushButton->setText(QStringLiteral("Выполняется..."));
+        ui->startKodidlpButton->setText(QStringLiteral("Выполняется..."));
         kodidlpProcess->start(QStringLiteral("kodidlp"), QStringList{input});
     });
 }
@@ -558,7 +558,7 @@ void MainWindow::on_showStreamlinkInfoButton_clicked()
 
 QString MainWindow::currentKodidlpUrl()
 {
-     QString input = ui->lineEdit->text();
+     QString input = ui->kodidlpUrlEdit->text();
 
      static const QRegularExpression vksportRe(
          "^https://vksport\\.vkvideo\\.ru/(?:live|video)-(\\d+_\\d+)$");
@@ -639,7 +639,7 @@ void MainWindow::on_rebootKodiButton_clicked()
 
 QString  MainWindow::currentIptvUrl()
 {
-    QString input = ui->lineEdit_2->text();
+    QString input = ui->iptvUrlEdit->text();
     return input;
 }
 
@@ -647,7 +647,7 @@ QString  MainWindow::currentIptvUrl()
 void MainWindow::on_playIptvUrlButton_clicked()
 {
     // Берём текст из lineEdit_2
-    QString input = ui->lineEdit_2->text();
+    QString input = ui->iptvUrlEdit->text();
     QString filePath = "/tmp/list.m3u";
 
     // 1️⃣ Создаём M3U
@@ -811,7 +811,7 @@ void MainWindow::on_startYoutubeDownloadButton_clicked()
 
 QString MainWindow::currentYoutubeUrl()
 {
-    QString input = ui->lineEdit_3->text();
+    QString input = ui->youtubeUrlEdit->text();
     return input;
 }
 
@@ -848,8 +848,8 @@ void MainWindow::on_sendBackActionButton_clicked()
 
 void MainWindow::on_clearUrlFieldsButton_clicked()
 {
-    clearLineEditField(ui->lineEdit_2, "Введите URL...");
-    clearLineEditField(ui->lineEdit, "Введите URL...");
+    clearLineEditField(ui->iptvUrlEdit, "Введите URL...");
+    clearLineEditField(ui->kodidlpUrlEdit, "Введите URL...");
 }
 
 
@@ -867,7 +867,7 @@ QUrl url("https://matchtv.ru/on-air");
     player->show();
     connect(player, &PlayerWindow::urlCaptured,
             this, [&](const QUrl& capturedUrl){
-                ui->lineEdit_4->setText(capturedUrl.toString()); // Обращаемся через указатель
+                ui->matchTvUrlEdit->setText(capturedUrl.toString()); // Обращаемся через указатель
             });
     qDebug() << "Открыт встроенный плеер:" << url.toString();
 
@@ -875,7 +875,7 @@ QUrl url("https://matchtv.ru/on-air");
 }
 void MainWindow::on_playMatchTvIptvButton_clicked()
 {
-    QString input = ui->lineEdit_4->text();
+    QString input = ui->matchTvUrlEdit->text();
     QString filePath = "/tmp/list.m3u";
 
     if (input.trimmed().isEmpty()) {
@@ -1065,7 +1065,7 @@ void MainWindow::on_playMatchTvFileButton_clicked()
 
 void MainWindow::on_startMatchTvStreamlinkButton_clicked()
 {
-    const QString input = ui->lineEdit_4->text().trimmed();
+    const QString input = ui->matchTvUrlEdit->text().trimmed();
     if (input.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("Матч ТВ"),
                              QStringLiteral("Сначала нажмите «Получить URL»."));
@@ -1236,11 +1236,11 @@ void MainWindow::on_startDrmDownloadButton_clicked()
 
         if (input.isEmpty()) {
             input = lines.at(0).trimmed();
-            ui->lineEdit_drm->setText(input);
+            ui->kodidlpUrlEdit_drm->setText(input);
         }
         if (keydrm.isEmpty()) {
             keydrm = lines.at(1).trimmed();
-            ui->lineEdit_drm_key->setText(keydrm);
+            ui->kodidlpUrlEdit_drm_key->setText(keydrm);
         }
     }
 
@@ -1549,14 +1549,14 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
 QString MainWindow::currentDrmUrl()
 {
-    QString input = ui->lineEdit_drm->text();
+    QString input = ui->kodidlpUrlEdit_drm->text();
     return input;
 }
 
 
 QString MainWindow::currentDrmKey()
 {
-    QString input = ui->lineEdit_drm_key->text();
+    QString input = ui->kodidlpUrlEdit_drm_key->text();
     return input;
 }
 
@@ -1569,8 +1569,8 @@ void MainWindow::on_stopStreamlinkButton_clicked()
 
 void MainWindow::on_clearDrmFieldsButton_clicked()
 {
-    clearLineEditField(ui->lineEdit_drm, "Введите URL...");
-    clearLineEditField(ui->lineEdit_drm_key, "Введите key...");
+    clearLineEditField(ui->kodidlpUrlEdit_drm, "Введите URL...");
+    clearLineEditField(ui->kodidlpUrlEdit_drm_key, "Введите key...");
 }
 
 
