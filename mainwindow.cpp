@@ -369,6 +369,8 @@ MainWindow::MainWindow(QWidget *parent)
     setButtonIcon(ui->stopYtDlpButton, QStyle::SP_BrowserStop);
     setButtonIcon(ui->stopFfmpegButton, QStyle::SP_BrowserStop);
     setButtonIcon(ui->stopStreamlinkButton, QStyle::SP_BrowserStop);
+    setButtonIcon(ui->killMatchTvStreamlinkButton, QStyle::SP_BrowserStop);
+    setButtonIcon(ui->closeMatchTvPopupButton, QStyle::SP_DialogCloseButton);
     setButtonIcon(ui->stopDrmDownloadButton, QStyle::SP_BrowserStop);
     setButtonIcon(ui->clearUrlFieldsButton, QStyle::SP_DialogResetButton);
     setButtonIcon(ui->clearDrmFieldsButton, QStyle::SP_DialogResetButton);
@@ -1939,6 +1941,16 @@ QString MainWindow::currentDrmKey()
 void MainWindow::on_stopStreamlinkButton_clicked()
 {
     sshKillProcess("streamlink");
+}
+
+void MainWindow::on_killMatchTvStreamlinkButton_clicked()
+{
+    sshKillProcess("streamlink");
+}
+
+void MainWindow::on_closeMatchTvPopupButton_clicked()
+{
+    postInputAction("back");
 }
 
 
