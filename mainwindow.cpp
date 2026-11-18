@@ -39,6 +39,8 @@
 #include <QWidget>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QWebEngineView>
+#include <QWebEngineSettings>
 #include <QEvent>
 #include <QTabBar>
 #include <QList>
@@ -112,6 +114,16 @@ MainWindow::MainWindow(QWidget *parent)
     , manager(new QNetworkAccessManager(this))
 {
     ui->setupUi(this);
+
+    // Встроенная вкладка Okko: сайт работает внутри Qt WebEngine, без
+    // запуска внешнего браузера и без передачи управления другому приложению.
+    auto *okkoView = new QWebEngineView(ui->tabWidget);
+    okkoView->setObjectName(QStringLiteral("okkoWebView"));
+    okkoView->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
+    okkoView->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
+    okkoView->settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
+    ui->tabWidget->addTab(okkoView, QStringLiteral("okko.tv"));
+    okkoView->setUrl(QUrl(QStringLiteral("https://okko.tv")));
 
     // Сенсорная панель управляет навигацией Kodi через JSON-RPC.
     ui->mousePadWidget->setMouseTracking(true);
