@@ -2,7 +2,7 @@
 
 The DRM downloader still writes decrypted fMP4 initialization segments and `.m4s` fragments under `~/kodigui/drm`.
 
-The former periodic FFmpeg remux into `~/kodigui/drm.mp4` has been replaced by a lightweight playlist publisher:
+The former periodic FFmpeg remux into a standalone `drm.mp4` file has been replaced by a lightweight playlist publisher:
 
 - `~/kodigui/drm/hls/master.m3u8` — master playlist opened by Kodi;
 - `~/kodigui/drm/hls/video.m3u8` — H.264 fMP4 video fragments;
@@ -10,7 +10,7 @@ The former periodic FFmpeg remux into `~/kodigui/drm.mp4` has been replaced by a
 
 The publisher matches video and audio fragments by their filename timestamps (video time base 1/600, audio time base 1/48000), waits until the newest pair is stable, and atomically replaces playlist files. It does not rewrite or concatenate media fragments and does not run FFmpeg.
 
-Both DRM Play buttons open `drm/hls/master.m3u8` once. The EOF monitor and automatic `Player.Open` / `Player.Seek` resume logic have been removed.
+Both DRM Play buttons open `kodigui/drm/hls/master.m3u8` once. The EOF monitor and automatic `Player.Open` / `Player.Seek` resume logic have been removed.
 
 Logs on Raspberry Pi:
 
