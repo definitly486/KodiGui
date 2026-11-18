@@ -127,12 +127,15 @@ MainWindow::MainWindow(QWidget *parent)
     okkoView->settings()->setAttribute(QWebEngineSettings::PlaybackRequiresUserGesture, false);
     ui->tabWidget->addTab(okkoView, QStringLiteral("okko.tv"));
 
-    // Keep every tab caption readable. On narrow screens Qt will scroll the
-    // tab bar instead of shortening labels with an ellipsis.
+    // Keep tab captions intact. Give tabs enough minimum width for readable
+    // labels; when the complete row does not fit, Qt scrolls the tab bar.
+    ui->tabWidget->setElideMode(Qt::ElideNone);
+    ui->tabWidget->setUsesScrollButtons(true);
     if (QTabBar *tabBar = ui->tabWidget->tabBar()) {
         tabBar->setElideMode(Qt::ElideNone);
         tabBar->setExpanding(false);
         tabBar->setUsesScrollButtons(true);
+        tabBar->setMinimumHeight(tabBar->sizeHint().height());
     }
 
     // Диагностика загрузки Okko. Ошибки сертификатов только журналируем
@@ -215,7 +218,7 @@ MainWindow::MainWindow(QWidget *parent)
                 }
                 QTabBar::tab {
                     padding: 4px 5px; margin: 1px 1px 0 0;
-                    min-width: 0px; font-size: 8pt;
+                    min-width: 100px; font-size: 8pt;
                 }
                 QTabBar::tab:selected {
                     background: #ffffff; color: #087f8c;
@@ -292,7 +295,7 @@ MainWindow::MainWindow(QWidget *parent)
                     padding: 4px 5px; margin: 1px 1px 0 0;
                     border-top-left-radius: 6px;
                     border-top-right-radius: 6px;
-                    min-width: 0px; font-size: 8pt;
+                    min-width: 100px; font-size: 8pt;
                 }
                 QTabBar::tab:selected {
                     background: rgba(133, 87, 37, 238);
@@ -379,7 +382,7 @@ MainWindow::MainWindow(QWidget *parent)
                 }
                 QTabBar::tab {
                     padding: 4px 5px; margin: 1px 1px 0 0;
-                    min-width: 0px; font-size: 8pt;
+                    min-width: 100px; font-size: 8pt;
                 }
                 QTabBar::tab:selected { background: #1d2532; color: #55d6c2; border-color: #3b9e98; font-weight: 600; }
                 QTabBar::tab:hover:!selected { background: #2b394b; color: #ffffff; }
