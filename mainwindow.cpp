@@ -221,7 +221,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(installOkkoExtensionButton, &QPushButton::clicked, this,
-            [this, okkoExtensionManager, okkoExtensionStatus]() {
+            [this, okkoExtensionStatus]() {
         const QString extensionPath = QFileDialog::getExistingDirectory(
             this, QStringLiteral("Выберите папку расширения с manifest.json"),
             QDir::homePath());
@@ -262,7 +262,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(manageOkkoExtensionsButton, &QPushButton::clicked, this,
-            [this, okkoExtensionManager, manageOkkoExtensionsButton]() {
+            [this, manageOkkoExtensionsButton]() {
         QMenu menu(manageOkkoExtensionsButton);
         const auto extensions = okkoExtensionManager->extensions();
         if (extensions.isEmpty()) {
@@ -279,7 +279,7 @@ MainWindow::MainWindow(QWidget *parent)
                 action->setCheckable(true);
                 action->setChecked(extension.isEnabled());
                 connect(action, &QAction::toggled, this,
-                        [this, okkoExtensionManager, extension](bool enabled) {
+                        [this, extension](bool enabled) {
                     okkoExtensionManager->setExtensionEnabled(extension, enabled);
                     QSettings settings;
                     QStringList disabledIds =
