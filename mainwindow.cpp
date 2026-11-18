@@ -174,8 +174,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     okkoExtensionManager = okkoProfile->extensionManager();
 
-    okkoExtensionManager = okkoProfile->extensionManager();
-
     connect(okkoExtensionManager, &QWebEngineExtensionManager::loadFinished, this,
             [this, okkoExtensionStatus](const QWebEngineExtensionInfo &extension) {
         QSettings settings;
@@ -213,7 +211,7 @@ MainWindow::MainWindow(QWidget *parent)
                 QStringLiteral("Ошибка загрузки: %1").arg(extension.error()));
             if (isPendingLoad) {
                 QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                    QStringLiteral("Не удалось загрузить расширение:\\n%1")
+                    QStringLiteral("Не удалось загрузить расширение:\n%1")
                         .arg(extension.error()));
             }
         }
@@ -242,7 +240,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (parseError.error != QJsonParseError::NoError ||
             !manifestDocument.isObject()) {
             QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                QStringLiteral("Некорректный manifest.json:\\n%1")
+                QStringLiteral("Некорректный manifest.json:\n%1")
                     .arg(parseError.errorString()));
             return;
         }
@@ -300,7 +298,7 @@ MainWindow::MainWindow(QWidget *parent)
         const auto extensions = okkoExtensionManager->extensions();
         if (extensions.isEmpty()) {
             QAction *emptyAction = menu.addAction(
-                QStringLiteral("Расширения ещё не установлены"));
+                QStringLiteral("Нет загруженных расширений"));
             emptyAction->setEnabled(false);
         } else {
             for (const QWebEngineExtensionInfo &extension : extensions) {
