@@ -2064,8 +2064,8 @@ print(video)
 print(audio)
 PY_TRACK_DISCOVERY
 )
-  V=$(printf '%s\\n' "$TRACKS" | sed -n '1p')
-  A=$(printf '%s\\n' "$TRACKS" | sed -n '2p')
+  V=$(printf '%s\n' "$TRACKS" | sed -n '1p')
+  A=$(printf '%s\n' "$TRACKS" | sed -n '2p')
   if [ -n "$V" ] && [ -n "$A" ]; then
     VI=""; AI=""
     for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
