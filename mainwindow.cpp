@@ -1137,7 +1137,7 @@ void MainWindow::on_playIptvUrlButton_clicked()
 
 void MainWindow::on_playYoutubeFileButton_clicked()
 {
-    postPlayerOpenFile("kodigui/yt.mp4");
+    postPlayerOpenFile("/home/pi/kodigui/yt.mp4");
 }
 
 
@@ -1179,7 +1179,7 @@ void MainWindow::on_startYoutubeDownloadButton_clicked()
     // Через 50 сек открываем файл в Kodi
     QTimer::singleShot(50000, this, [this]() {
         qDebug() << "Прошло 50 секунд, открываем kodigui/yt.mp4";
-        postPlayerOpenFile("kodigui/yt.mp4");
+        postPlayerOpenFile("/home/pi/kodigui/yt.mp4");
     });
 }
 
