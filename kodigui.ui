@@ -623,6 +623,20 @@
              </widget>
             </item>
             <item>
+             <widget class="QPushButton" name="killMatchTvStreamlinkButton">
+              <property name="text">
+               <string>Kill Streamlink</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="closeMatchTvPopupButton">
+              <property name="text">
+               <string>Close popup dialog</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <spacer name="matchSp">
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
