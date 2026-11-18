@@ -23,25 +23,9 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv); // переименовал переменную в app для ясности
 
     MainWindow w;
-    w.show(); // показываем окно ДО вычисления размеров окна
-
-    // Получение размеров экрана с использованием QScreen
-    const auto primaryScreen = QGuiApplication::primaryScreen();
-    if (!primaryScreen)
-        return EXIT_FAILURE; // защита от ситуации отсутствия экранов
-
-    const QRect availableGeometry = primaryScreen->availableGeometry();
-    int screenWidth = availableGeometry.width();
-    int screenHeight = availableGeometry.height();
-
-    // Теперь получаем размер видимого окна после отображения (необходимый шаг!)
-    int windowWidth = w.frameGeometry().width();
-    int windowHeight = w.frameGeometry().height();
-
-    // Центрирование окна относительно центра экрана
-    int x = (screenWidth - windowWidth) / 2;
-    int y = (screenHeight - windowHeight) / 2;
-    w.move(x, y);
+    // Use the available screen width so the tab captions are visible on startup.
+    // QTabBar keeps its scroll buttons as a fallback on small displays.
+    w.showMaximized();
 
     return app.exec();
 }
