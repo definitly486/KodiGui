@@ -29,61 +29,61 @@ public:
 private slots:
     void on_horizontalSlider_valueChanged(int value);
 
-    QString on_lineEdit_textChanged();
+    QString currentKodidlpUrl();
 
     void on_pushButton_info_clicked();
 
-    void on_pushButton_clicked();
+    void on_startKodidlpButton_clicked();
 
-    void on_pushButton_2_clicked();
+    void on_playPvrChannelButton_clicked();
 
-    void on_pushButton_3_clicked();
+    void on_stopPvrChannelButton_clicked();
 
-    void on_pushButton_4_clicked();
+    void on_startKodiButton_clicked();
 
-    void on_pushButton_6_clicked();
+    void on_stopKodiButton_clicked();
 
-    void on_pushButton_5_clicked();
+    void on_rebootKodiButton_clicked();
 
-    QString  on_lineEdit_2_textChanged();
+    QString  currentIptvUrl();
 
-    void on_pushButton_7_clicked();
+    void on_playIptvUrlButton_clicked();
 
-    void on_pushButton_9_clicked();
+    void on_playYoutubeFileButton_clicked();
 
-    void on_pushButton_8_clicked();
+    void on_startYoutubeDownloadButton_clicked();
 
-     QString  on_lineEdit_3_textChanged();
+     QString  currentYoutubeUrl();
     void on_getonairnow_clicked();  // <-- добавьте эту строку
 
-     void on_pushButton_10_clicked();
+     void on_stopYoutubePlaybackButton_clicked();
 
-     void on_pushButton_11_clicked();
+     void on_stopYtDlpButton_clicked();
 
-     void on_pushButton_12_clicked();
+     void on_stopFfmpegButton_clicked();
 
-     void on_pushButton_13_clicked();
+     void on_toggleIptvSimpleClientButton_clicked();
 
-     void on_pushButton_14_clicked();
+     void on_sendBackActionButton_clicked();
 
      void on_pushButton_clearurl_clicked();
 
-     void on_pushButton_15_clicked();
+     void on_captureMatchTvUrlButton_clicked();
 
-     void on_pushButton_16_clicked();
+     void on_playMatchTvIptvButton_clicked();
 
      void on_pushButton_match_streamlink_clicked();
      void on_pushButton_play_match_file_clicked();
 
-     void on_playdrm_17_clicked();
+     void on_playDrmStreamButton_clicked();
 
-     void on_stopdrm_18_clicked();
+     void on_stopDrmPlaybackButton_clicked();
 
      void on_pushButton_rundrm_clicked();
 
-      QString  on_lineEdit_drm_textChanged();
+      QString  currentDrmUrl();
 
-       QString  on_lineEdit_drm_key_textChanged();
+       QString  currentDrmKey();
 
 
 
@@ -97,10 +97,10 @@ private slots:
 
        void on_pushButton_kill_m3u8DL_clicked();
 
-       void on_pushButton_17_clicked();
+       void on_closePopupButton_clicked();
 
 
-       void on_pushButton_18_clicked();
+       void on_refreshSystemMonitorButton_clicked();
 
     void on_debugClearButton_clicked();
 
