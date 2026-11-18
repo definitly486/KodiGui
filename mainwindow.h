@@ -10,6 +10,8 @@
 #include <QNetworkRequest>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QPoint>
+#include <QEvent>
 
 
 QT_BEGIN_NAMESPACE
@@ -110,6 +112,9 @@ private slots:
 
     void on_debugClearButton_clicked();
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
    private:
  Ui::MainWindow *ui;
  QProcess *pythonProcess;        // ← вот это
@@ -118,6 +123,8 @@ private slots:
  QProcess *drmFileCheckProcess = nullptr;
  int drmFileCheckAttempts = 0;
    QNetworkAccessManager *manager;
+   QPoint mousePadPressPos;
+   bool mousePadPressed = false;
     int rpcId = 1;
 
     void sendJsonRpc(
