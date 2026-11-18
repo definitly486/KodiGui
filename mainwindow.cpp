@@ -2043,7 +2043,7 @@ done
 if [ -z "$V" ] || [ -z "$A" ] || [ -z "$VI" ] || [ -z "$AI" ]; then
   echo "[$(ts)] ERROR: init segments not found (video=$V audio=$A)" >> "$LOG"
   echo "[$(ts)] DRM output top-level entries:" >> "$LOG"
-  find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 2 -printf '%y %p\\n' 2>/dev/null | head -n 80 >> "$LOG"
+  find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 2 -printf '%y %p\n' 2>/dev/null | head -n 80 >> "$LOG"
   echo "[$(ts)] Downloader log tail:" >> "$LOG"
   tail -n 40 "$HOME/kodigui/drm-download.log" 2>/dev/null >> "$LOG"
   exit 1
