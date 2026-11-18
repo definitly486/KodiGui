@@ -2,5 +2,6 @@
     <qresource>
         <file>kodi.ico</file>
         <file>match_now.py</file>
+        <file>tractor_theme_bg.jpg</file>
     </qresource>
 </RCC>
