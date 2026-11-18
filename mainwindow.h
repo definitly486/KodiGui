@@ -54,6 +54,8 @@ private slots:
     void on_startYoutubeDownloadButton_clicked();
 
     void on_startYoutubeStreamlinkButton_clicked();
+    void on_killYoutubeStreamlinkButton_clicked();
+    void on_closeYoutubePopupButton_clicked();
 
      QString  currentYoutubeUrl();
     void on_getonairnow_clicked();  // <-- добавьте эту строку
