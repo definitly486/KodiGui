@@ -1178,7 +1178,7 @@ void MainWindow::on_startYoutubeDownloadButton_clicked()
         "printf '\\n===== yt-dlp start: %s =====\\n' \"$(date -Is)\" "
         ">> \"$HOME/kodigui/yt-dlp.log\"; "
         "setsid -f \"$HOME/.local/bin/yt-dlp\" --verbose --newline "
-        "--js-runtimes deno -f '230+234' --merge-output-format mp4 "
+        "--js-runtimes deno -f '229+234' --merge-output-format mp4 "
         "--no-part --force-overwrites "
         "--retries infinite --fragment-retries infinite --retry-sleep 5 "
         + shellQuote(input) +
