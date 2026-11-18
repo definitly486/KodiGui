@@ -1262,7 +1262,7 @@ void MainWindow::on_pushButton_rundrm_clicked()
     const QString assembleScriptBody = QString::fromUtf8(R"DRM_HLS_SCRIPT(
 #!/bin/bash
 set -u
-LOG=$HOME/kodigui/drm-mux.log
+LOG="$HOME/kodigui/drm-mux.log"
 ts() { date +%H:%M:%S; }
 echo "[$(ts)] Dynamic HLS publisher started" >> "$LOG"
 V=""; A=""
@@ -1437,18 +1437,17 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
         "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
         "sleep 1; "
         "rm -f \"$HOME/kodigui/drm_mux.pid\" \"$HOME/kodigui/drm_download.pid\" "
-        "      \"$HOME/kodigui/drm.mp4\" \"$HOME/master.m3u8\" \"$HOME/kodigui/drm.ts\" \"$HOME/kodigui/drm.aar.ts\" "
         "      $HOME/kodigui/drm-assemble.sh; "
         "rm -rf \"$HOME/kodigui/drm\"; "
         "mkdir -p \"$HOME/kodigui/drm/hls\"; "
         "printf '%s\\n' " + shellQuote(runId) + " > \"$HOME/kodigui/drm/hls/.run-id\"; "
-        ": > $HOME/kodigui/drm-download.log; "
-        ": > $HOME/kodigui/drm-mux.log; "
+        " : > \"$HOME/kodigui/drm-download.log\"; "
+        " : > \"$HOME/kodigui/drm-mux.log\"; "
         // Пишем скрипт сборщика в файл (без проблем с кавычками).
-        "cat > $HOME/kodigui/drm-assemble.sh << 'ASSEMBLE_EOF'\n" +
+        "cat > \"$HOME/kodigui/drm-assemble.sh\" << 'ASSEMBLE_EOF'\n" +
         assembleScriptBody +
         "ASSEMBLE_EOF\n"
-        "chmod +x $HOME/kodigui/drm-assemble.sh; "
+        "chmod +x \"$HOME/kodigui/drm-assemble.sh\"; "
         // Загрузчик: расшифрованные сегменты в $HOME/kodigui/drm (без live-pipe-mux).
         "nohup N_m3u8DL-RE " + shellQuote(input) +
         " --key " + shellQuote(keydrm) +
@@ -1457,11 +1456,11 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
         "--mp4-real-time-decryption "
         "--live-keep-segments "
         "--select-audio id='audio_aar=128000' "
-        "> $HOME/kodigui/drm-download.log 2>&1 < /dev/null & "
+        "> \"$HOME/kodigui/drm-download.log\" 2>&1 < /dev/null & "
         "echo $! > \"$HOME/kodigui/drm_download.pid\"; "
         // Публикатор динамических HLS-плейлистов → drm/hls/master.m3u8
-        "nohup setsid $HOME/kodigui/drm-assemble.sh "
-        "> $HOME/kodigui/drm-mux.log 2>&1 < /dev/null & "
+        "nohup setsid \"$HOME/kodigui/drm-assemble.sh\" "
+        "> \"$HOME/kodigui/drm-mux.log\" 2>&1 < /dev/null & "
         "echo $! > \"$HOME/kodigui/drm_mux.pid\"";
 
     runCommand("ssh", {user, remoteCmd});
@@ -1599,7 +1598,7 @@ void MainWindow::on_pushButton_kill_m3u8DL_clicked()
         "fi; "
         "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
         "rm -f \"$HOME/kodigui/drm_mux.pid\" \"$HOME/kodigui/drm_download.pid\" "
-        "      $HOME/kodigui/drm-assemble.sh"});
+        "      \"$HOME/kodigui/drm-assemble.sh\""});
 }
 
 
