@@ -372,6 +372,8 @@ MainWindow::MainWindow(QWidget *parent)
     setButtonIcon(ui->stopStreamlinkButton, QStyle::SP_BrowserStop);
     setButtonIcon(ui->killMatchTvStreamlinkButton, QStyle::SP_BrowserStop);
     setButtonIcon(ui->closeMatchTvPopupButton, QStyle::SP_DialogCloseButton);
+    setButtonIcon(ui->killYoutubeStreamlinkButton, QStyle::SP_BrowserStop);
+    setButtonIcon(ui->closeYoutubePopupButton, QStyle::SP_DialogCloseButton);
     setButtonIcon(ui->stopDrmDownloadButton, QStyle::SP_BrowserStop);
     setButtonIcon(ui->clearUrlFieldsButton, QStyle::SP_DialogResetButton);
     setButtonIcon(ui->clearDrmFieldsButton, QStyle::SP_DialogResetButton);
@@ -1223,6 +1225,40 @@ void MainWindow::on_startYoutubeStreamlinkButton_clicked()
 
     runCommand("ssh", {user, remoteCmd});
 }
+
+void MainWindow::on_killYoutubeStreamlinkButton_clicked()
+{
+    // Останавливаем только тот Streamlink, который был запущен с вкладки YouTube.
+    // PID проверяется по командной строке; отдельная сессия позволяет завершить
+    // также дочерние процессы, не затрагивая Streamlink на других вкладках.
+    const QString remoteCmd =
+        "pidfile=\"$HOME/kodigui/streamlink.pid\"; "
+        "if [ -s \"$pidfile\" ]; then "
+        "  p=$(cat \"$pidfile\"); "
+        "  case \"$p\" in ''|*[!0-9]*) p='';; esac; "
+        "  if [ -n \"$p\" ] && [ \"$p\" -gt 1 ] 2>/dev/null && "
+        "     [ -r \"/proc/$p/cmdline\" ] && "
+        "     tr '\\0' ' ' < \"/proc/$p/cmdline\" | grep -Fq \"$HOME/.local/bin/streamlink\"; then "
+        "    pgid=$(ps -o pgid= -p \"$p\" 2>/dev/null | tr -d ' '); "
+        "    if [ \"$pgid\" = \"$p\" ]; then "
+        "      kill -TERM -- \"-$p\" 2>/dev/null || true; "
+        "      sleep 2; "
+        "      kill -0 -- \"-$p\" 2>/dev/null && kill -KILL -- \"-$p\" 2>/dev/null || true; "
+        "    else "
+        "      kill -TERM \"$p\" 2>/dev/null || true; "
+        "    fi; "
+        "  fi; "
+        "  rm -f \"$pidfile\"; "
+        "fi";
+
+    runCommand("ssh", {"pi@192.168.8.45", remoteCmd});
+}
+
+void MainWindow::on_closeYoutubePopupButton_clicked()
+{
+    postInputAction("back");
+}
+
 
 QString MainWindow::currentYoutubeUrl()
 {
