@@ -220,18 +220,16 @@ MainWindow::MainWindow(QWidget *parent)
     setButtonIcon(ui->sendBackActionButton, QStyle::SP_DialogCloseButton);
     setButtonIcon(ui->showStreamlinkInfoButton, QStyle::SP_MessageBoxInformation);
 
-    auto *tabBar = ui->tabWidget->tabBar();
-    tabBar->setIconSize(QSize(16, 16));
-    tabBar->setTabIcon(0, style()->standardIcon(QStyle::SP_MediaVolume));
-    tabBar->setTabIcon(1, style()->standardIcon(QStyle::SP_DirLinkIcon));
-    tabBar->setTabIcon(2, style()->standardIcon(QStyle::SP_MediaPlay));
-    tabBar->setTabIcon(3, style()->standardIcon(QStyle::SP_ComputerIcon));
-    tabBar->setTabIcon(4, style()->standardIcon(QStyle::SP_ArrowDown));
-    tabBar->setTabIcon(5, style()->standardIcon(QStyle::SP_DialogYesButton));
-    tabBar->setTabIcon(6, style()->standardIcon(QStyle::SP_FileDialogContentsView));
-    tabBar->setTabIcon(7, style()->standardIcon(QStyle::SP_ComputerIcon));
-    tabBar->setTabIcon(8, style()->standardIcon(QStyle::SP_MessageBoxInformation));
-    tabBar->setTabIcon(9, style()->standardIcon(QStyle::SP_MessageBoxWarning));
+    ui->tabWidget->setTabIcon(0, style()->standardIcon(QStyle::SP_MediaVolume));
+    ui->tabWidget->setTabIcon(1, style()->standardIcon(QStyle::SP_DirLinkIcon));
+    ui->tabWidget->setTabIcon(2, style()->standardIcon(QStyle::SP_MediaPlay));
+    ui->tabWidget->setTabIcon(3, style()->standardIcon(QStyle::SP_ComputerIcon));
+    ui->tabWidget->setTabIcon(4, style()->standardIcon(QStyle::SP_ArrowDown));
+    ui->tabWidget->setTabIcon(5, style()->standardIcon(QStyle::SP_DialogYesButton));
+    ui->tabWidget->setTabIcon(6, style()->standardIcon(QStyle::SP_FileDialogContentsView));
+    ui->tabWidget->setTabIcon(7, style()->standardIcon(QStyle::SP_ComputerIcon));
+    ui->tabWidget->setTabIcon(8, style()->standardIcon(QStyle::SP_MessageBoxInformation));
+    ui->tabWidget->setTabIcon(9, style()->standardIcon(QStyle::SP_MessageBoxWarning));
 
     debugOutput = ui->debugTextEdit;
     ui->debugTextEdit->document()->setMaximumBlockCount(15000);
