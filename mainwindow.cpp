@@ -795,7 +795,7 @@ void MainWindow::on_pushButton_8_clicked()
     runCommand("ssh", {user, "sudo systemctl restart youtubeUnblock"});
 
     const QString remoteCmd = QString(
-        "nohup $HOME/.local/bin/yt-dlp -f 269+234 %1 --no-part -o \"$HOME/kodigui/yt.mp4\" "
+        "mkdir -p \"$HOME/kodigui\" && nohup $HOME/.local/bin/yt-dlp -f 269+234 %1 --no-part -o \"$HOME/kodigui/yt.mp4\" "
         "> /dev/null 2>&1 &"
     ).arg(input);
 
@@ -1426,6 +1426,7 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
     const QString remoteCmd =
         // Останавливаем старые процессы, затем только после этого удаляем старые файлы.
+        "mkdir -p \"$HOME/kodigui\"; "
         "if [ -s \"$HOME/kodigui/drm_mux.pid\" ]; then "
         "  old_mux=$(cat \"$HOME/kodigui/drm_mux.pid\"); "
         "  kill -TERM -- -\"$old_mux\" 2>/dev/null || true; "
@@ -1437,12 +1438,12 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
         "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
         "sleep 1; "
         "rm -f \"$HOME/kodigui/drm_mux.pid\" \"$HOME/kodigui/drm_download.pid\" "
-        "      $HOME/kodigui/drm-assemble.sh; "
+        "      \"$HOME/kodigui/drm-assemble.sh\"; "
         "rm -rf \"$HOME/kodigui/drm\"; "
         "mkdir -p \"$HOME/kodigui/drm/hls\"; "
         "printf '%s\\n' " + shellQuote(runId) + " > \"$HOME/kodigui/drm/hls/.run-id\"; "
-        " : > \"$HOME/kodigui/drm-download.log\"; "
-        " : > \"$HOME/kodigui/drm-mux.log\"; "
+        ": > \"$HOME/kodigui/drm-download.log\"; "
+        ": > \"$HOME/kodigui/drm-mux.log\"; "
         // Пишем скрипт сборщика в файл (без проблем с кавычками).
         "cat > \"$HOME/kodigui/drm-assemble.sh\" << 'ASSEMBLE_EOF'\n" +
         assembleScriptBody +
