@@ -72,6 +72,8 @@ private slots:
 
      void on_pushButton_16_clicked();
 
+     void on_pushButton_match_streamlink_clicked();
+
      void on_playdrm_17_clicked();
 
      void on_stopdrm_18_clicked();
