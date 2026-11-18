@@ -92,7 +92,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QSlider" name="horizontalSlider">
+             <widget class="QSlider" name="volumeSlider">
               <property name="minimumSize">
                <size>
                 <width>200</width>
@@ -154,12 +154,12 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEdit"/>
+           <widget class="QLineEdit" name="kodidlpUrlEdit"/>
           </item>
           <item row="1" column="1">
            <layout class="QHBoxLayout" name="urlKodidlpBtns">
             <item>
-             <widget class="QPushButton" name="pushButton">
+             <widget class="QPushButton" name="startKodidlpButton">
               <property name="text">
                <string>run</string>
               </property>
@@ -202,12 +202,12 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="QLineEdit" name="lineEdit_2"/>
+           <widget class="QLineEdit" name="iptvUrlEdit"/>
           </item>
           <item row="3" column="1">
            <layout class="QHBoxLayout" name="urlEchoBtns">
             <item>
-             <widget class="QPushButton" name="pushButton_7">
+             <widget class="QPushButton" name="playIptvUrlButton">
               <property name="text">
                <string>run</string>
               </property>
@@ -276,28 +276,28 @@
            </spacer>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_2">
+           <widget class="QPushButton" name="playPvrChannelButton">
             <property name="text">
              <string>Play Channel</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_3">
+           <widget class="QPushButton" name="stopPvrChannelButton">
             <property name="text">
              <string>Stop Channel</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="playdrm_17">
+           <widget class="QPushButton" name="playDrmStreamButton">
             <property name="text">
              <string>Play drm.mp4</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="stopdrm_18">
+           <widget class="QPushButton" name="stopDrmPlaybackButton">
             <property name="text">
              <string>Stop drm.mp4</string>
             </property>
@@ -343,7 +343,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_13">
+             <widget class="QPushButton" name="toggleIptvSimpleClientButton">
               <property name="text">
                <string>Enable</string>
               </property>
@@ -361,7 +361,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_14">
+             <widget class="QPushButton" name="sendBackActionButton">
               <property name="text">
                <string>Close</string>
               </property>
@@ -433,21 +433,21 @@
            </spacer>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_4">
+           <widget class="QPushButton" name="startKodiButton">
             <property name="text">
              <string>Star Kodi</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_6">
+           <widget class="QPushButton" name="stopKodiButton">
             <property name="text">
              <string>Kill Kodi</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_5">
+           <widget class="QPushButton" name="rebootKodiButton">
             <property name="text">
              <string>Reboot</string>
             </property>
@@ -505,10 +505,10 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEdit_3"/>
+           <widget class="QLineEdit" name="youtubeUrlEdit"/>
           </item>
           <item row="1" column="1">
-           <widget class="QPushButton" name="pushButton_8">
+           <widget class="QPushButton" name="startYoutubeDownloadButton">
             <property name="text">
              <string>run</string>
             </property>
@@ -525,28 +525,28 @@
         <item>
          <layout class="QHBoxLayout" name="ytBtns">
           <item>
-           <widget class="QPushButton" name="pushButton_9">
+           <widget class="QPushButton" name="playYoutubeFileButton">
             <property name="text">
              <string>Play yt.mp4</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_10">
+           <widget class="QPushButton" name="stopYoutubePlaybackButton">
             <property name="text">
              <string>Stop yt.mp4</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_11">
+           <widget class="QPushButton" name="stopYtDlpButton">
             <property name="text">
              <string>Kill yt-dlp</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_12">
+           <widget class="QPushButton" name="stopFfmpegButton">
             <property name="text">
              <string>Kill ffmpeg</string>
             </property>
@@ -590,19 +590,19 @@
         <item>
          <layout class="QVBoxLayout" name="matchLeft">
           <item>
-           <widget class="QLineEdit" name="lineEdit_4"/>
+           <widget class="QLineEdit" name="matchTvUrlEdit"/>
           </item>
           <item>
            <layout class="QHBoxLayout" name="matchBtns">
             <item>
-             <widget class="QPushButton" name="pushButton_15">
+             <widget class="QPushButton" name="captureMatchTvUrlButton">
               <property name="text">
                <string>Получить URL</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_16">
+             <widget class="QPushButton" name="playMatchTvIptvButton">
               <property name="text">
                <string>Play (IPTV)</string>
               </property>
@@ -783,7 +783,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="pushButton_17">
+           <widget class="QPushButton" name="closePopupButton">
             <property name="text">
              <string>close</string>
             </property>
@@ -830,7 +830,7 @@
         <item>
          <layout class="QHBoxLayout" name="monitorBtns">
           <item>
-           <widget class="QPushButton" name="pushButton_18">
+           <widget class="QPushButton" name="refreshSystemMonitorButton">
             <property name="text">
              <string>top</string>
             </property>
