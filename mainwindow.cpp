@@ -41,8 +41,15 @@
 #include <QWheelEvent>
 #include <QWebEngineView>
 #include <QWebEnginePage>
+#include <QWebEngineProfile>
+#include <QWebEngineExtensionManager>
+#include <QWebEngineExtensionInfo>
 #include <QWebEngineCertificateError>
 #include <QWebEngineSettings>
+#include <QFileDialog>
+#include <QPushButton>
+#include <QMenu>
+#include <QStandardPaths>
 #include <QEvent>
 #include <QTabBar>
 #include <QList>
@@ -117,15 +124,160 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    // Встроенная вкладка Okko: сайт работает внутри Qt WebEngine, без
-    // запуска внешнего браузера и без передачи управления другому приложению.
-    auto *okkoView = new QWebEngineView(ui->tabWidget);
+    // Persistent Okko profile: extension manager cannot work with an
+    // off-the-record profile. Keep cookies, local storage and extensions
+    // between application launches.
+    const QString okkoDataPath = QStandardPaths::writableLocation(
+        QStandardPaths::AppDataLocation) + QStringLiteral("/okko-profile");
+    QDir().mkpath(okkoDataPath);
+    okkoProfile = new QWebEngineProfile(QStringLiteral("KodiGuiOkko"), this);
+    okkoProfile->setPersistentStoragePath(okkoDataPath + QStringLiteral("/storage"));
+    okkoProfile->setCachePath(okkoDataPath + QStringLiteral("/cache"));
+    okkoProfile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+
+    // Встроенная вкладка Okko работает внутри Qt WebEngine.
+    auto *okkoContainer = new QWidget(ui->tabWidget);
+    auto *okkoLayout = new QVBoxLayout(okkoContainer);
+    okkoLayout->setContentsMargins(0, 0, 0, 0);
+    okkoLayout->setSpacing(4);
+
+    auto *okkoToolbar = new QWidget(okkoContainer);
+    auto *okkoToolbarLayout = new QHBoxLayout(okkoToolbar);
+    okkoToolbarLayout->setContentsMargins(6, 4, 6, 2);
+    auto *installOkkoExtensionButton = new QPushButton(
+        QStringLiteral("Установить расширение"), okkoToolbar);
+    auto *manageOkkoExtensionsButton = new QPushButton(
+        QStringLiteral("Расширения"), okkoToolbar);
+    auto *okkoExtensionStatus = new QLabel(
+        QStringLiteral("Поддерживаются совместимые расширения Manifest V3"),
+        okkoToolbar);
+    okkoToolbarLayout->addWidget(installOkkoExtensionButton);
+    okkoToolbarLayout->addWidget(manageOkkoExtensionsButton);
+    okkoToolbarLayout->addWidget(okkoExtensionStatus, 1);
+    okkoLayout->addWidget(okkoToolbar);
+
+    auto *okkoView = new QWebEngineView(okkoContainer);
     okkoView->setObjectName(QStringLiteral("okkoWebView"));
     okkoView->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
     okkoView->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
     okkoView->settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
     okkoView->settings()->setAttribute(QWebEngineSettings::PlaybackRequiresUserGesture, false);
-    ui->tabWidget->addTab(okkoView, QStringLiteral("okko.tv"));
+    okkoView->setPage(new QWebEnginePage(okkoProfile, okkoView));
+    okkoLayout->addWidget(okkoView, 1);
+    ui->tabWidget->addTab(okkoContainer, QStringLiteral("okko.tv"));
+
+    okkoExtensionManager = okkoProfile->extensionManager();
+    connect(okkoExtensionManager, &QWebEngineExtensionManager::loadFinished, this,
+            [this, okkoExtensionStatus](const QWebEngineExtensionInfo &extension) {
+        if (extension.isLoaded()) {
+            okkoExtensionManager->setExtensionEnabled(extension, true);
+            qInfo().noquote() << "[Okko extensions] Loaded and enabled:"
+                              << extension.name() << extension.path();
+            okkoExtensionStatus->setText(
+                QStringLiteral("Расширение активно: %1").arg(extension.name()));
+        } else {
+            qWarning().noquote() << "[Okko extensions] Load failed:"
+                                 << extension.name() << extension.error();
+            okkoExtensionStatus->setText(
+                QStringLiteral("Ошибка загрузки: %1").arg(extension.error()));
+        }
+    });
+    connect(okkoExtensionManager, &QWebEngineExtensionManager::installFinished, this,
+            [this, okkoExtensionStatus](const QWebEngineExtensionInfo &extension) {
+        if (extension.isInstalled()) {
+            if (extension.isLoaded())
+                okkoExtensionManager->setExtensionEnabled(extension, true);
+            qInfo().noquote() << "[Okko extensions] Installed:"
+                              << extension.name() << extension.path();
+            okkoExtensionStatus->setText(
+                QStringLiteral("Установлено: %1").arg(extension.name()));
+            QMessageBox::information(this, QStringLiteral("Расширения Okko"),
+                QStringLiteral("Расширение «%1» установлено.").arg(extension.name()));
+        } else {
+            qWarning().noquote() << "[Okko extensions] Install failed:"
+                                 << extension.error();
+            okkoExtensionStatus->setText(
+                QStringLiteral("Ошибка установки: %1").arg(extension.error()));
+            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
+                QStringLiteral("Не удалось установить расширение:\n%1")
+                    .arg(extension.error()));
+        }
+    });
+
+    connect(installOkkoExtensionButton, &QPushButton::clicked, this,
+            [this, okkoExtensionManager, okkoExtensionStatus]() {
+        const QString extensionPath = QFileDialog::getExistingDirectory(
+            this, QStringLiteral("Выберите папку расширения с manifest.json"),
+            QDir::homePath());
+        if (extensionPath.isEmpty())
+            return;
+
+        QFile manifestFile(QDir(extensionPath).filePath(QStringLiteral("manifest.json")));
+        if (!manifestFile.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
+                QStringLiteral("В выбранной папке нет доступного manifest.json."));
+            return;
+        }
+        QJsonParseError parseError;
+        const QJsonDocument manifestDocument =
+            QJsonDocument::fromJson(manifestFile.readAll(), &parseError);
+        if (parseError.error != QJsonParseError::NoError ||
+            !manifestDocument.isObject()) {
+            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
+                QStringLiteral("Некорректный manifest.json:\n%1")
+                    .arg(parseError.errorString()));
+            return;
+        }
+
+        const QJsonObject manifest = manifestDocument.object();
+        if (manifest.value(QStringLiteral("manifest_version")).toInt() != 3) {
+            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
+                QStringLiteral("Qt WebEngine поддерживает только Manifest V3. "
+                               "Расширения Manifest V2 установить нельзя."));
+            return;
+        }
+
+        const QString extensionName =
+            manifest.value(QStringLiteral("name")).toString(QStringLiteral("Без имени"));
+        okkoExtensionStatus->setText(
+            QStringLiteral("Установка: %1…").arg(extensionName));
+        qInfo().noquote() << "[Okko extensions] Installing from:" << extensionPath;
+        okkoExtensionManager->installExtension(extensionPath);
+    });
+
+    connect(manageOkkoExtensionsButton, &QPushButton::clicked, this,
+            [this, okkoExtensionManager, manageOkkoExtensionsButton]() {
+        QMenu menu(manageOkkoExtensionsButton);
+        const auto extensions = okkoExtensionManager->extensions();
+        if (extensions.isEmpty()) {
+            QAction *emptyAction = menu.addAction(
+                QStringLiteral("Расширения ещё не установлены"));
+            emptyAction->setEnabled(false);
+        } else {
+            for (const QWebEngineExtensionInfo &extension : extensions) {
+                if (!extension.isLoaded())
+                    continue;
+                QAction *action = menu.addAction(
+                    extension.name().isEmpty()
+                        ? QStringLiteral("Расширение без имени") : extension.name());
+                action->setCheckable(true);
+                action->setChecked(extension.isEnabled());
+                connect(action, &QAction::toggled, this,
+                        [this, okkoExtensionManager, extension](bool enabled) {
+                    okkoExtensionManager->setExtensionEnabled(extension, enabled);
+                    qInfo() << "[Okko extensions]" << extension.name()
+                            << (enabled ? "enabled" : "disabled");
+                });
+            }
+            if (menu.isEmpty()) {
+                QAction *emptyAction = menu.addAction(
+                    QStringLiteral("Нет загруженных расширений"));
+                emptyAction->setEnabled(false);
+            }
+        }
+        menu.exec(manageOkkoExtensionsButton->mapToGlobal(
+            QPoint(0, manageOkkoExtensionsButton->height())));
+    });
 
     // Keep tab captions intact. Give tabs enough minimum width for readable
     // labels; when the complete row does not fit, Qt scrolls the tab bar.
