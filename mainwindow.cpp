@@ -1236,11 +1236,11 @@ void MainWindow::on_startDrmDownloadButton_clicked()
 
         if (input.isEmpty()) {
             input = lines.at(0).trimmed();
-            ui->kodidlpUrlEdit_drm->setText(input);
+            ui->lineEdit_drm->setText(input);
         }
         if (keydrm.isEmpty()) {
             keydrm = lines.at(1).trimmed();
-            ui->kodidlpUrlEdit_drm_key->setText(keydrm);
+            ui->lineEdit_drm_key->setText(keydrm);
         }
     }
 
@@ -1549,14 +1549,14 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
 QString MainWindow::currentDrmUrl()
 {
-    QString input = ui->kodidlpUrlEdit_drm->text();
+    QString input = ui->lineEdit_drm->text();
     return input;
 }
 
 
 QString MainWindow::currentDrmKey()
 {
-    QString input = ui->kodidlpUrlEdit_drm_key->text();
+    QString input = ui->lineEdit_drm_key->text();
     return input;
 }
 
@@ -1569,8 +1569,8 @@ void MainWindow::on_stopStreamlinkButton_clicked()
 
 void MainWindow::on_clearDrmFieldsButton_clicked()
 {
-    clearLineEditField(ui->kodidlpUrlEdit_drm, "Введите URL...");
-    clearLineEditField(ui->kodidlpUrlEdit_drm_key, "Введите key...");
+    clearLineEditField(ui->lineEdit_drm, "Введите URL...");
+    clearLineEditField(ui->lineEdit_drm_key, "Введите key...");
 }
 
 
