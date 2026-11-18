@@ -37,6 +37,9 @@
 #include <QLabel>
 #include <QFont>
 #include <QWidget>
+#include <QMouseEvent>
+#include <QWheelEvent>
+#include <QEvent>
 #include <QTabBar>
 #include <QList>
 #include <QHash>
@@ -109,6 +112,26 @@ MainWindow::MainWindow(QWidget *parent)
     , manager(new QNetworkAccessManager(this))
 {
     ui->setupUi(this);
+
+    // Сенсорная панель управляет навигацией Kodi через JSON-RPC.
+    ui->mousePadWidget->setMouseTracking(true);
+    ui->mousePadWidget->installEventFilter(this);
+    connect(ui->mouseBackButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("back")); });
+    connect(ui->mouseContextButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("contextmenu")); });
+    connect(ui->mouseHomeButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("home")); });
+    connect(ui->mouseUpButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("up")); });
+    connect(ui->mouseDownButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("down")); });
+    connect(ui->mouseLeftButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("left")); });
+    connect(ui->mouseRightButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("right")); });
+    connect(ui->mouseSelectButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("select")); });
 
     // Кнопки с тематическими иконками: в классической теме они отключаются.
     QList<QPushButton *> themedButtons;
@@ -551,6 +574,56 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
 
+}
+
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched != ui->mousePadWidget)
+        return QMainWindow::eventFilter(watched, event);
+
+    if (event->type() == QEvent::MouseButtonPress) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton) {
+            mousePadPressPos = mouseEvent->pos();
+            mousePadPressed = true;
+            ui->mousePadStatusLabel->setText(QStringLiteral("Панель активна — перемещайте палец или мышь"));
+            return true;
+        }
+        if (mouseEvent->button() == Qt::RightButton) {
+            postInputAction(QStringLiteral("back"));
+            return true;
+        }
+    } else if (event->type() == QEvent::MouseButtonRelease) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton && mousePadPressed) {
+            mousePadPressed = false;
+            const QPoint delta = mouseEvent->pos() - mousePadPressPos;
+            if (delta.manhattanLength() < 24) {
+                postInputAction(QStringLiteral("select"));
+                ui->mousePadStatusLabel->setText(QStringLiteral("Выбор элемента"));
+            } else if (qAbs(delta.x()) >= qAbs(delta.y())) {
+                postInputAction(delta.x() > 0 ? QStringLiteral("right") : QStringLiteral("left"));
+                ui->mousePadStatusLabel->setText(delta.x() > 0
+                    ? QStringLiteral("Вправо") : QStringLiteral("Влево"));
+            } else {
+                postInputAction(delta.y() > 0 ? QStringLiteral("down") : QStringLiteral("up"));
+                ui->mousePadStatusLabel->setText(delta.y() > 0
+                    ? QStringLiteral("Вниз") : QStringLiteral("Вверх"));
+            }
+            return true;
+        }
+    } else if (event->type() == QEvent::Wheel) {
+        auto *wheelEvent = static_cast<QWheelEvent *>(event);
+        if (wheelEvent->angleDelta().y() != 0) {
+            postInputAction(wheelEvent->angleDelta().y() > 0
+                ? QStringLiteral("up") : QStringLiteral("down"));
+            ui->mousePadStatusLabel->setText(wheelEvent->angleDelta().y() > 0
+                ? QStringLiteral("Прокрутка вверх") : QStringLiteral("Прокрутка вниз"));
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 MainWindow::~MainWindow()
