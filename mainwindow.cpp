@@ -1090,13 +1090,15 @@ void MainWindow::on_startMatchTvStreamlinkButton_clicked()
 
     const QString remoteCommand =
         "mkdir -p \"$HOME/kodigui\"; "
+        // Удаляем предыдущий результат сразу при нажатии кнопки,
+        // до остановки старого Streamlink и запуска новой загрузки.
+        "rm -f \"$HOME/kodigui/match.mp4\"; "
         "if [ -s \"$HOME/kodigui/matchtv-streamlink.pid\" ]; then "
         "  old_pid=$(cat \"$HOME/kodigui/matchtv-streamlink.pid\"); "
         "  kill \"$old_pid\" 2>/dev/null || true; "
         "fi; "
         "pkill -x streamlink 2>/dev/null || true; "
         "sleep 1; "
-        "rm -f \"$HOME/kodigui/match.mp4\"; "
         "nohup \"$HOME/.local/bin/streamlink\" " + quotedUrl +
         " worst -f -o \"$HOME/kodigui/match.mp4\" "
         "> \"$HOME/kodigui/matchtv-streamlink.log\" 2>&1 < /dev/null & "
