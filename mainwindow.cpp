@@ -115,6 +115,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Сенсорная панель управляет навигацией Kodi через JSON-RPC.
     ui->mousePadWidget->setMouseTracking(true);
+    ui->mousePadHintLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
     ui->mousePadWidget->installEventFilter(this);
     connect(ui->mouseBackButton, &QPushButton::clicked, this,
             [this]() { postInputAction(QStringLiteral("back")); });
