@@ -196,7 +196,7 @@ void MainWindow::on_debugClearButton_clicked()
     qInfo() << "Debug log cleared";
 }
 
-void MainWindow::on_horizontalSlider_valueChanged(int value)
+void MainWindow::on_volumeSlider_valueChanged(int value)
 {
     postSetVolume(value);
     qDebug() << "Значение горизонтального слайдера изменилось:" << value;
