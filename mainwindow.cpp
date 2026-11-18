@@ -1215,6 +1215,7 @@ void MainWindow::on_startYoutubeStreamlinkButton_clicked()
 
     const QString remoteCmd =
         "mkdir -p \"$HOME/kodigui\"; "
+        "rm -f \"$HOME/kodigui/yt.mp4\"; "
         "printf '\\n===== Streamlink start: %s =====\\n' \"$(date -Is)\" "
         ">> \"$HOME/kodigui/streamlink.log\"; "
         "nohup setsid \"$HOME/.local/bin/streamlink\" "
