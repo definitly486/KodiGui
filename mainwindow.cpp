@@ -34,6 +34,8 @@
 #include <QComboBox>
 #include <QSettings>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QAction>
 #include <QLabel>
 #include <QFont>
 #include <QWidget>
@@ -170,11 +172,19 @@ MainWindow::MainWindow(QWidget *parent)
     connect(okkoExtensionManager, &QWebEngineExtensionManager::loadFinished, this,
             [this, okkoExtensionStatus](const QWebEngineExtensionInfo &extension) {
         if (extension.isLoaded()) {
-            okkoExtensionManager->setExtensionEnabled(extension, true);
-            qInfo().noquote() << "[Okko extensions] Loaded and enabled:"
-                              << extension.name() << extension.path();
+            QSettings settings;
+            const QStringList disabledIds =
+                settings.value(QStringLiteral("okko/disabledExtensions")).toStringList();
+            const bool shouldEnable = !disabledIds.contains(extension.id());
+            okkoExtensionManager->setExtensionEnabled(extension, shouldEnable);
+            qInfo().noquote() << "[Okko extensions] Loaded:"
+                              << extension.name() << extension.path()
+                              << (shouldEnable ? "enabled" : "kept disabled");
             okkoExtensionStatus->setText(
-                QStringLiteral("Расширение активно: %1").arg(extension.name()));
+                QStringLiteral("%1: %2")
+                    .arg(shouldEnable ? QStringLiteral("Расширение активно")
+                                      : QStringLiteral("Расширение отключено"),
+                         extension.name()));
         } else {
             qWarning().noquote() << "[Okko extensions] Load failed:"
                                  << extension.name() << extension.error();
@@ -185,8 +195,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(okkoExtensionManager, &QWebEngineExtensionManager::installFinished, this,
             [this, okkoExtensionStatus](const QWebEngineExtensionInfo &extension) {
         if (extension.isInstalled()) {
-            if (extension.isLoaded())
+            if (extension.isLoaded()) {
+                QSettings settings;
+                QStringList disabledIds =
+                    settings.value(QStringLiteral("okko/disabledExtensions")).toStringList();
+                disabledIds.removeAll(extension.id());
+                settings.setValue(QStringLiteral("okko/disabledExtensions"), disabledIds);
                 okkoExtensionManager->setExtensionEnabled(extension, true);
+            }
             qInfo().noquote() << "[Okko extensions] Installed:"
                               << extension.name() << extension.path();
             okkoExtensionStatus->setText(
@@ -265,6 +281,14 @@ MainWindow::MainWindow(QWidget *parent)
                 connect(action, &QAction::toggled, this,
                         [this, okkoExtensionManager, extension](bool enabled) {
                     okkoExtensionManager->setExtensionEnabled(extension, enabled);
+                    QSettings settings;
+                    QStringList disabledIds =
+                        settings.value(QStringLiteral("okko/disabledExtensions")).toStringList();
+                    if (enabled)
+                        disabledIds.removeAll(extension.id());
+                    else if (!disabledIds.contains(extension.id()))
+                        disabledIds.append(extension.id());
+                    settings.setValue(QStringLiteral("okko/disabledExtensions"), disabledIds);
                     qInfo() << "[Okko extensions]" << extension.name()
                             << (enabled ? "enabled" : "disabled");
                 });
