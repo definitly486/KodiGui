@@ -40,6 +40,8 @@
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QWebEngineView>
+#include <QWebEnginePage>
+#include <QWebEngineCertificateError>
 #include <QWebEngineSettings>
 #include <QEvent>
 #include <QTabBar>
@@ -122,7 +124,36 @@ MainWindow::MainWindow(QWidget *parent)
     okkoView->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
     okkoView->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
     okkoView->settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
+    okkoView->settings()->setAttribute(QWebEngineSettings::PlaybackRequiresUserGesture, false);
     ui->tabWidget->addTab(okkoView, QStringLiteral("okko.tv"));
+
+    // Диагностика загрузки Okko. Ошибки сертификатов только журналируем
+    // и оставляем отклонёнными: проверку TLS намеренно не отключаем.
+    connect(okkoView, &QWebEngineView::loadStarted, this, []() {
+        qInfo() << "[Okko] page load started";
+    });
+    connect(okkoView, &QWebEngineView::loadProgress, this, [](int progress) {
+        qInfo() << "[Okko] load progress:" << progress << "%";
+    });
+    connect(okkoView, &QWebEngineView::loadFinished, this, [okkoView](bool ok) {
+        qInfo() << "[Okko] load finished:" << ok
+                << "URL:" << okkoView->url().toString()
+                << "title:" << okkoView->title();
+    });
+    connect(okkoView->page(), &QWebEnginePage::certificateError, this,
+            [](const QWebEngineCertificateError &error) {
+        qWarning().noquote() << "[Okko] TLS certificate error:"
+                            << error.description()
+                            << "| URL:" << error.url().toString()
+                            << "| type:" << static_cast<int>(error.type())
+                            << "| overridable:" << error.isOverridable();
+        // Не вызываем acceptCertificate(): недоверенный сертификат блокируется.
+    });
+    connect(okkoView->page(), &QWebEnginePage::renderProcessTerminated, this,
+            [](QWebEnginePage::RenderProcessTerminationStatus status, int exitCode) {
+        qWarning() << "[Okko] renderer terminated; status:"
+                   << static_cast<int>(status) << "exit code:" << exitCode;
+    });
     okkoView->setUrl(QUrl(QStringLiteral("https://okko.tv")));
 
     // Сенсорная панель управляет навигацией Kodi через JSON-RPC.
