@@ -31,7 +31,7 @@ private slots:
 
     QString currentKodidlpUrl();
 
-    void on_pushButton_info_clicked();
+    void on_showStreamlinkInfoButton_clicked();
 
     void on_startKodidlpButton_clicked();
 
@@ -66,20 +66,20 @@ private slots:
 
      void on_sendBackActionButton_clicked();
 
-     void on_pushButton_clearurl_clicked();
+     void on_clearUrlFieldsButton_clicked();
 
      void on_captureMatchTvUrlButton_clicked();
 
      void on_playMatchTvIptvButton_clicked();
 
-     void on_pushButton_match_streamlink_clicked();
-     void on_pushButton_play_match_file_clicked();
+     void on_startMatchTvStreamlinkButton_clicked();
+     void on_playMatchTvFileButton_clicked();
 
      void on_playDrmStreamButton_clicked();
 
      void on_stopDrmPlaybackButton_clicked();
 
-     void on_pushButton_rundrm_clicked();
+     void on_startDrmDownloadButton_clicked();
 
       QString  currentDrmUrl();
 
@@ -89,13 +89,13 @@ private slots:
 
 
 
-       void on_pushButton_killstreamlink_clicked();
+       void on_stopStreamlinkButton_clicked();
 
-       void on_pushButton_cleardrm_clicked();
+       void on_clearDrmFieldsButton_clicked();
 
-       void on_pushButton_playdrm_clicked();
+       void on_playDrmHlsButton_clicked();
 
-       void on_pushButton_kill_m3u8DL_clicked();
+       void on_stopDrmDownloadButton_clicked();
 
        void on_closePopupButton_clicked();
 
