@@ -762,7 +762,7 @@ void MainWindow::on_pushButton_7_clicked()
 
 void MainWindow::on_pushButton_9_clicked()
 {
-    postPlayerOpenFile("yt.mp4");
+    postPlayerOpenFile("match.mp4");
 }
 
 
@@ -804,7 +804,7 @@ void MainWindow::on_pushButton_8_clicked()
     // Через 50 сек открываем файл в Kodi
     QTimer::singleShot(50000, this, [this]() {
         qDebug() << "Прошло 50 секунд, открываем yt.mp4";
-        postPlayerOpenFile("yt.mp4");
+        postPlayerOpenFile("match.mp4");
     });
 }
 
@@ -1089,9 +1089,9 @@ void MainWindow::on_pushButton_match_streamlink_clicked()
         "fi; "
         "pkill -x streamlink 2>/dev/null || true; "
         "sleep 1; "
-        "rm -f /home/pi/yt.mp4; "
+        "rm -f /home/pi/match.mp4; "
         "nohup streamlink " + quotedUrl +
-        " worst -f -o /home/pi/yt.mp4 "
+        " worst -f -o /home/pi/match.mp4 "
         "> /home/pi/matchtv-streamlink.log 2>&1 < /dev/null & "
         "echo $! > /home/pi/matchtv-streamlink.pid";
 
@@ -1103,10 +1103,10 @@ void MainWindow::on_pushButton_match_streamlink_clicked()
 
     // Даём Streamlink время создать выходной файл, затем открываем его в Kodi.
     QTimer::singleShot(3000, this, [this]() {
-        qInfo() << "Match TV: opening /home/pi/yt.mp4 in Kodi";
-        postPlayerOpenFile("yt.mp4");
+        qInfo() << "Match TV: opening /home/pi/match.mp4 in Kodi";
+        postPlayerOpenFile("match.mp4");
         ui->textBrowseronairnow->append(
-            QStringLiteral("Команда Streamlink отправлена. Файл: /home/pi/yt.mp4; "
+            QStringLiteral("Команда Streamlink отправлена. Файл: /home/pi/match.mp4; "
                            "журнал: /home/pi/matchtv-streamlink.log"));
     });
 }
