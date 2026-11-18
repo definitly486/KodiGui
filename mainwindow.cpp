@@ -52,6 +52,7 @@
 #include <QPushButton>
 #include <QMenu>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QEvent>
 #include <QTabBar>
 #include <QList>
@@ -126,15 +127,44 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    // Persistent Okko profile: extension manager cannot work with an
-    // off-the-record profile. Keep cookies, local storage and extensions
-    // between application launches.
-    const QString okkoDataPath = QStandardPaths::writableLocation(
-        QStandardPaths::AppDataLocation) + QStringLiteral("/okko-profile");
-    QDir().mkpath(okkoDataPath);
+    // Persistent Okko profile stored locally on the machine running KodiGui.
+    // Do not use a remote/server path: Qt WebEngine and its extensions run in this
+    // process and need a writable local profile directory.
+    QString okkoDataPath = QStandardPaths::writableLocation(
+        QStandardPaths::AppDataLocation);
+    if (okkoDataPath.isEmpty())
+        okkoDataPath = QDir::home().filePath(QStringLiteral(".local/share/KodiGui"));
+    okkoDataPath = QDir(okkoDataPath).filePath(QStringLiteral("okko-profile"));
+
+    auto ensureWritableDirectory = [](const QString &path, QString *reason) {
+        if (path.isEmpty() || !QDir().mkpath(path)) {
+            if (reason)
+                *reason = QStringLiteral("Не удалось создать каталог: %1").arg(path);
+            return false;
+        }
+        QTemporaryDir probe(QDir(path).filePath(
+            QStringLiteral(".kodigui-write-test-XXXXXX")));
+        if (!probe.isValid()) {
+            if (reason)
+                *reason = QStringLiteral("Нет прав на создание временного каталога в: %1")
+                              .arg(path);
+            return false;
+        }
+        return true;
+    };
+
+    QString profilePathError;
+    const QString storagePath = QDir(okkoDataPath).filePath(QStringLiteral("storage"));
+    const QString cachePath = QDir(okkoDataPath).filePath(QStringLiteral("cache"));
+    if (!ensureWritableDirectory(storagePath, &profilePathError) ||
+        !ensureWritableDirectory(cachePath, &profilePathError)) {
+        qCritical().noquote() << "[Okko extensions] Profile storage is not writable:"
+                              << profilePathError;
+    }
+
     okkoProfile = new QWebEngineProfile(QStringLiteral("KodiGuiOkko"), this);
-    okkoProfile->setPersistentStoragePath(okkoDataPath + QStringLiteral("/storage"));
-    okkoProfile->setCachePath(okkoDataPath + QStringLiteral("/cache"));
+    okkoProfile->setPersistentStoragePath(storagePath);
+    okkoProfile->setCachePath(cachePath);
     okkoProfile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
 
     // Встроенная вкладка Okko работает внутри Qt WebEngine.
@@ -169,6 +199,21 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tabWidget->addTab(okkoContainer, QStringLiteral("okko.tv"));
 
     okkoExtensionManager = okkoProfile->extensionManager();
+
+    // Qt WebEngine installs extensions into <profile path>/Extensions.
+    // Create and probe the exact directory used by Qt before offering installation.
+    const QString okkoExtensionInstallPath = okkoExtensionManager->installPath();
+    QString extensionPathError;
+    const bool okkoExtensionPathReady =
+        ensureWritableDirectory(okkoExtensionInstallPath, &extensionPathError);
+    qInfo().noquote() << "[Okko extensions] Profile path:"
+                      << okkoProfile->persistentStoragePath();
+    qInfo().noquote() << "[Okko extensions] Install path:"
+                      << okkoExtensionInstallPath;
+    if (!okkoExtensionPathReady) {
+        qCritical().noquote() << "[Okko extensions] Install directory is not writable:"
+                              << extensionPathError;
+    }
     connect(okkoExtensionManager, &QWebEngineExtensionManager::loadFinished, this,
             [this, okkoExtensionStatus](const QWebEngineExtensionInfo &extension) {
         if (extension.isLoaded()) {
@@ -211,7 +256,9 @@ MainWindow::MainWindow(QWidget *parent)
                 QStringLiteral("Расширение «%1» установлено.").arg(extension.name()));
         } else {
             qWarning().noquote() << "[Okko extensions] Install failed:"
-                                 << extension.error();
+                                 << extension.error()
+                                 << "install path:" << okkoExtensionManager->installPath()
+                                 << "profile path:" << okkoProfile->persistentStoragePath();
             okkoExtensionStatus->setText(
                 QStringLiteral("Ошибка установки: %1").arg(extension.error()));
             QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
@@ -255,9 +302,34 @@ MainWindow::MainWindow(QWidget *parent)
 
         const QString extensionName =
             manifest.value(QStringLiteral("name")).toString(QStringLiteral("Без имени"));
+
+        // Recheck the real Qt install directory immediately before installation.
+        const QString installPath = okkoExtensionManager->installPath();
+        QString installPathError;
+        if (!ensureWritableDirectory(installPath, &installPathError)) {
+            qCritical().noquote() << "[Okko extensions] Cannot prepare install directory:"
+                                  << installPathError;
+            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
+                QStringLiteral("Каталог для установки расширения недоступен.\\n"
+                               "Путь: %1\\nПричина: %2")
+                    .arg(installPath, installPathError));
+            return;
+        }
+
+        QTemporaryDir installProbe(QDir(installPath).filePath(
+            QStringLiteral(".kodigui-install-test-XXXXXX")));
+        if (!installProbe.isValid()) {
+            const QString reason = QStringLiteral(
+                "Qt WebEngine не может создавать каталоги в %1").arg(installPath);
+            qCritical().noquote() << "[Okko extensions]" << reason;
+            QMessageBox::warning(this, QStringLiteral("Расширения Okko"), reason);
+            return;
+        }
+
         okkoExtensionStatus->setText(
             QStringLiteral("Установка: %1…").arg(extensionName));
-        qInfo().noquote() << "[Okko extensions] Installing from:" << extensionPath;
+        qInfo().noquote() << "[Okko extensions] Installing from:" << extensionPath
+                          << "to:" << installPath;
         okkoExtensionManager->installExtension(extensionPath);
     });
 
