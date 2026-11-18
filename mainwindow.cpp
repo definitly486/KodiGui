@@ -15,6 +15,7 @@
 #include <QRegularExpression>
 #include <QMessageBox>
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 #include <QTextCursor>
 #include <QDir>
@@ -52,7 +53,6 @@
 #include <QPushButton>
 #include <QMenu>
 #include <QStandardPaths>
-#include <QTemporaryDir>
 #include <QEvent>
 #include <QTabBar>
 #include <QList>
@@ -136,32 +136,6 @@ MainWindow::MainWindow(QWidget *parent)
         okkoDataPath = QDir::home().filePath(QStringLiteral(".local/share/KodiGui"));
     okkoDataPath = QDir(okkoDataPath).filePath(QStringLiteral("okko-profile"));
 
-    auto ensureWritableDirectory = [](const QString &path, QString *reason) {
-        if (path.isEmpty() || !QDir().mkpath(path)) {
-            if (reason)
-                *reason = QStringLiteral("Не удалось создать каталог: %1").arg(path);
-            return false;
-        }
-        QTemporaryDir probe(QDir(path).filePath(
-            QStringLiteral(".kodigui-write-test-XXXXXX")));
-        if (!probe.isValid()) {
-            if (reason)
-                *reason = QStringLiteral("Нет прав на создание временного каталога в: %1")
-                              .arg(path);
-            return false;
-        }
-        return true;
-    };
-
-    QString profilePathError;
-    const QString storagePath = QDir(okkoDataPath).filePath(QStringLiteral("storage"));
-    const QString cachePath = QDir(okkoDataPath).filePath(QStringLiteral("cache"));
-    if (!ensureWritableDirectory(storagePath, &profilePathError) ||
-        !ensureWritableDirectory(cachePath, &profilePathError)) {
-        qCritical().noquote() << "[Okko extensions] Profile storage is not writable:"
-                              << profilePathError;
-    }
-
     okkoProfile = new QWebEngineProfile(QStringLiteral("KodiGuiOkko"), this);
     okkoProfile->setPersistentStoragePath(storagePath);
     okkoProfile->setCachePath(cachePath);
@@ -177,7 +151,7 @@ MainWindow::MainWindow(QWidget *parent)
     auto *okkoToolbarLayout = new QHBoxLayout(okkoToolbar);
     okkoToolbarLayout->setContentsMargins(6, 4, 6, 2);
     auto *installOkkoExtensionButton = new QPushButton(
-        QStringLiteral("Установить расширение"), okkoToolbar);
+        QStringLiteral("Загрузить расширение"), okkoToolbar);
     auto *manageOkkoExtensionsButton = new QPushButton(
         QStringLiteral("Расширения"), okkoToolbar);
     auto *okkoExtensionStatus = new QLabel(
@@ -200,24 +174,23 @@ MainWindow::MainWindow(QWidget *parent)
 
     okkoExtensionManager = okkoProfile->extensionManager();
 
-    // Qt WebEngine installs extensions into <profile path>/Extensions.
-    // Create and probe the exact directory used by Qt before offering installation.
-    const QString okkoExtensionInstallPath = okkoExtensionManager->installPath();
-    QString extensionPathError;
-    const bool okkoExtensionPathReady =
-        ensureWritableDirectory(okkoExtensionInstallPath, &extensionPathError);
-    qInfo().noquote() << "[Okko extensions] Profile path:"
-                      << okkoProfile->persistentStoragePath();
-    qInfo().noquote() << "[Okko extensions] Install path:"
-                      << okkoExtensionInstallPath;
-    if (!okkoExtensionPathReady) {
-        qCritical().noquote() << "[Okko extensions] Install directory is not writable:"
-                              << extensionPathError;
-    }
+    okkoExtensionManager = okkoProfile->extensionManager();
+
     connect(okkoExtensionManager, &QWebEngineExtensionManager::loadFinished, this,
             [this, okkoExtensionStatus](const QWebEngineExtensionInfo &extension) {
+        QSettings settings;
+        const QString pendingPath =
+            settings.value(QStringLiteral("okko/pendingExtensionPath")).toString();
+        const bool isPendingLoad = !pendingPath.isEmpty() &&
+            QDir::cleanPath(extension.path()) == QDir::cleanPath(pendingPath);
+
         if (extension.isLoaded()) {
-            QSettings settings;
+            if (isPendingLoad) {
+                settings.setValue(QStringLiteral("okko/extensionSourcePath"),
+                                  QDir::cleanPath(extension.path()));
+                settings.remove(QStringLiteral("okko/pendingExtensionPath"));
+            }
+
             const QStringList disabledIds =
                 settings.value(QStringLiteral("okko/disabledExtensions")).toStringList();
             const bool shouldEnable = !disabledIds.contains(extension.id());
@@ -231,63 +204,45 @@ MainWindow::MainWindow(QWidget *parent)
                                       : QStringLiteral("Расширение отключено"),
                          extension.name()));
         } else {
+            if (isPendingLoad)
+                settings.remove(QStringLiteral("okko/pendingExtensionPath"));
             qWarning().noquote() << "[Okko extensions] Load failed:"
-                                 << extension.name() << extension.error();
+                                 << extension.name() << extension.error()
+                                 << "path:" << extension.path();
             okkoExtensionStatus->setText(
                 QStringLiteral("Ошибка загрузки: %1").arg(extension.error()));
-        }
-    });
-    connect(okkoExtensionManager, &QWebEngineExtensionManager::installFinished, this,
-            [this, okkoExtensionStatus](const QWebEngineExtensionInfo &extension) {
-        if (extension.isInstalled()) {
-            if (extension.isLoaded()) {
-                QSettings settings;
-                QStringList disabledIds =
-                    settings.value(QStringLiteral("okko/disabledExtensions")).toStringList();
-                disabledIds.removeAll(extension.id());
-                settings.setValue(QStringLiteral("okko/disabledExtensions"), disabledIds);
-                okkoExtensionManager->setExtensionEnabled(extension, true);
+            if (isPendingLoad) {
+                QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
+                    QStringLiteral("Не удалось загрузить расширение:\\n%1")
+                        .arg(extension.error()));
             }
-            qInfo().noquote() << "[Okko extensions] Installed:"
-                              << extension.name() << extension.path();
-            okkoExtensionStatus->setText(
-                QStringLiteral("Установлено: %1").arg(extension.name()));
-            QMessageBox::information(this, QStringLiteral("Расширения Okko"),
-                QStringLiteral("Расширение «%1» установлено.").arg(extension.name()));
-        } else {
-            qWarning().noquote() << "[Okko extensions] Install failed:"
-                                 << extension.error()
-                                 << "install path:" << okkoExtensionManager->installPath()
-                                 << "profile path:" << okkoProfile->persistentStoragePath();
-            okkoExtensionStatus->setText(
-                QStringLiteral("Ошибка установки: %1").arg(extension.error()));
-            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                QStringLiteral("Не удалось установить расширение:\n%1")
-                    .arg(extension.error()));
         }
     });
 
     connect(installOkkoExtensionButton, &QPushButton::clicked, this,
-            [this, okkoExtensionStatus, ensureWritableDirectory]() {
+            [this, okkoExtensionStatus]() {
         const QString extensionPath = QFileDialog::getExistingDirectory(
             this, QStringLiteral("Выберите папку расширения с manifest.json"),
             QDir::homePath());
         if (extensionPath.isEmpty())
             return;
 
-        QFile manifestFile(QDir(extensionPath).filePath(QStringLiteral("manifest.json")));
+        const QString manifestPath =
+            QDir(extensionPath).filePath(QStringLiteral("manifest.json"));
+        QFile manifestFile(manifestPath);
         if (!manifestFile.open(QIODevice::ReadOnly)) {
             QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
                 QStringLiteral("В выбранной папке нет доступного manifest.json."));
             return;
         }
+
         QJsonParseError parseError;
         const QJsonDocument manifestDocument =
             QJsonDocument::fromJson(manifestFile.readAll(), &parseError);
         if (parseError.error != QJsonParseError::NoError ||
             !manifestDocument.isObject()) {
             QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                QStringLiteral("Некорректный manifest.json:\n%1")
+                QStringLiteral("Некорректный manifest.json:\\n%1")
                     .arg(parseError.errorString()));
             return;
         }
@@ -296,41 +251,47 @@ MainWindow::MainWindow(QWidget *parent)
         if (manifest.value(QStringLiteral("manifest_version")).toInt() != 3) {
             QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
                 QStringLiteral("Qt WebEngine поддерживает только Manifest V3. "
-                               "Расширения Manifest V2 установить нельзя."));
+                               "Расширения Manifest V2 загрузить нельзя."));
             return;
         }
 
         const QString extensionName =
             manifest.value(QStringLiteral("name")).toString(QStringLiteral("Без имени"));
-
-        // Recheck the real Qt install directory immediately before installation.
-        const QString installPath = okkoExtensionManager->installPath();
-        QString installPathError;
-        if (!ensureWritableDirectory(installPath, &installPathError)) {
-            qCritical().noquote() << "[Okko extensions] Cannot prepare install directory:"
-                                  << installPathError;
-            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                QStringLiteral("Каталог для установки расширения недоступен.\n"
-                               "Путь: %1\nПричина: %2")
-                    .arg(installPath, installPathError));
-            return;
-        }
-
-        QTemporaryDir installProbe(QDir(installPath).filePath(
-            QStringLiteral(".kodigui-install-test-XXXXXX")));
-        if (!installProbe.isValid()) {
-            const QString reason = QStringLiteral(
-                "Qt WebEngine не может создавать каталоги в %1").arg(installPath);
-            qCritical().noquote() << "[Okko extensions]" << reason;
-            QMessageBox::warning(this, QStringLiteral("Расширения Okko"), reason);
-            return;
-        }
+        QSettings settings;
+        settings.setValue(QStringLiteral("okko/pendingExtensionPath"),
+                          QDir::cleanPath(extensionPath));
 
         okkoExtensionStatus->setText(
-            QStringLiteral("Установка: %1…").arg(extensionName));
-        qInfo().noquote() << "[Okko extensions] Installing from:" << extensionPath
-                          << "to:" << installPath;
-        okkoExtensionManager->installExtension(extensionPath);
+            QStringLiteral("Загрузка: %1…").arg(extensionName));
+        qInfo().noquote() << "[Okko extensions] Loading unpacked extension from:"
+                          << extensionPath;
+        // loadExtension uses the source directory directly. No copy into
+        // profile/Extensions, so repeated loads cannot hit Qt's install-name collision.
+        okkoExtensionManager->loadExtension(extensionPath);
+    });
+
+    // loadExtension() is session-scoped, so restore the selected unpacked
+    // extension on every KodiGui startup from its saved host-local source path.
+    QTimer::singleShot(0, this, [this, okkoExtensionStatus]() {
+        QSettings settings;
+        const QString extensionPath =
+            settings.value(QStringLiteral("okko/extensionSourcePath")).toString();
+        if (extensionPath.isEmpty())
+            return;
+
+        const QString manifestPath =
+            QDir(extensionPath).filePath(QStringLiteral("manifest.json"));
+        if (!QFileInfo(extensionPath).isDir() || !QFileInfo(manifestPath).isFile()) {
+            qWarning().noquote() << "[Okko extensions] Saved extension directory is missing:"
+                                 << extensionPath;
+            okkoExtensionStatus->setText(
+                QStringLiteral("Папка расширения не найдена: %1").arg(extensionPath));
+            return;
+        }
+
+        qInfo().noquote() << "[Okko extensions] Restoring unpacked extension:"
+                          << extensionPath;
+        okkoExtensionManager->loadExtension(extensionPath);
     });
 
     connect(manageOkkoExtensionsButton, &QPushButton::clicked, this,
