@@ -136,6 +136,15 @@ MainWindow::MainWindow(QWidget *parent)
         okkoDataPath = QDir::home().filePath(QStringLiteral(".local/share/KodiGui"));
     okkoDataPath = QDir(okkoDataPath).filePath(QStringLiteral("okko-profile"));
 
+    const QString storagePath =
+        QDir(okkoDataPath).filePath(QStringLiteral("storage"));
+    const QString cachePath =
+        QDir(okkoDataPath).filePath(QStringLiteral("cache"));
+    if (!QDir().mkpath(storagePath) || !QDir().mkpath(cachePath)) {
+        qCritical().noquote() << "[Okko extensions] Cannot create profile directories:"
+                              << storagePath << cachePath;
+    }
+
     okkoProfile = new QWebEngineProfile(QStringLiteral("KodiGuiOkko"), this);
     okkoProfile->setPersistentStoragePath(storagePath);
     okkoProfile->setCachePath(cachePath);
