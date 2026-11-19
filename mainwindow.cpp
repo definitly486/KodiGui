@@ -334,7 +334,7 @@ MainWindow::MainWindow(QWidget *parent)
                     padding: 4px 5px; margin: 1px 1px 0 0;
                     border-top-left-radius: 6px;
                     border-top-right-radius: 6px;
-                    min-width: 0px; font-size: 8pt;
+                    min-width: 100px; font-size: 8pt;
                 }
                 QTabBar::tab:selected {
                     background: rgba(133, 87, 37, 238);
@@ -421,7 +421,7 @@ MainWindow::MainWindow(QWidget *parent)
                 }
                 QTabBar::tab {
                     padding: 4px 5px; margin: 1px 1px 0 0;
-                    min-width: 0px; font-size: 8pt;
+                    min-width: 100px; font-size: 8pt;
                 }
                 QTabBar::tab:selected { background: #1d2532; color: #55d6c2; border-color: #3b9e98; font-weight: 600; }
                 QTabBar::tab:hover:!selected { background: #2b394b; color: #ffffff; }
