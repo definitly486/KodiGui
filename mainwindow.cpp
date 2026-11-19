@@ -237,7 +237,9 @@ MainWindow::MainWindow(QWidget *parent)
         drmProcessStatusProcess->start(QStringLiteral("ssh"), {
             QStringLiteral("pi@192.168.8.45"),
             QStringLiteral("for name in yt-dlp streamlink ffmpeg N_m3u8DL-+; do "
-                           "if ps -axo pid=,comm=,args= | awk -v n=\\\"$name\\\" "
+                           "pattern=\\\"$name\\\"; "
+                           "if [ \\"$name\\" = N_m3u8DL-+ ]; then pattern=N_m3u8DL; fi; "
+                           "if ps -axo pid=,comm=,args= | awk -v n=\\\"$pattern\\\" "
                            "'$2 !~ /^(sh|bash|dash|awk|grep|ssh)$/ && index($0,n)>0 "
                            "{found=1} END {exit !found}'; then "
                            "echo $name=1; else echo $name=0; fi; done")
