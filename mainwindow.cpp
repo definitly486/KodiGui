@@ -34,6 +34,17 @@
 #include <QComboBox>
 #include <QSettings>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QWebEngineView>
+#include <QWebEnginePage>
+#include <QWebEngineProfile>
+#include <QWebEngineSettings>
+#include <QWebEngineUrlRequestInterceptor>
+#include <QApplication>
+#include <QClipboard>
+#include <QStandardPaths>
+#include <utility>
 #include <QLabel>
 #include <QFont>
 #include <QWidget>
@@ -56,6 +67,41 @@ void runCommand(const QString &command, const QStringList &args = {});
 #include <unistd.h>
 
 namespace {
+class OkkoMpdUrlInterceptor final : public QWebEngineUrlRequestInterceptor
+{
+public:
+    OkkoMpdUrlInterceptor(QObject *parent, QObject *context,
+                          std::function<void(const QString &)> callback)
+        : QWebEngineUrlRequestInterceptor(parent)
+        , m_context(context)
+        , m_callback(std::move(callback))
+    {
+    }
+
+    void interceptRequest(QWebEngineUrlRequestInfo &info) override
+    {
+        const QUrl requestUrl = info.requestUrl();
+        const QString scheme = requestUrl.scheme();
+        if ((scheme != QStringLiteral("http") && scheme != QStringLiteral("https")) ||
+            !requestUrl.path().contains(QStringLiteral(".mpd"), Qt::CaseInsensitive))
+            return;
+
+        const QString url = requestUrl.toString();
+        QObject *context = m_context;
+        const auto callback = m_callback;
+        if (context) {
+            QMetaObject::invokeMethod(context, [callback, url]() {
+                if (callback)
+                    callback(url);
+            }, Qt::QueuedConnection);
+        }
+    }
+
+private:
+    QObject *m_context;
+    std::function<void(const QString &)> m_callback;
+};
+
 QPointer<QTextEdit> debugOutput;
 std::atomic_bool debugOutputEnabled{true};
 
@@ -109,6 +155,77 @@ MainWindow::MainWindow(QWidget *parent)
     , manager(new QNetworkAccessManager(this))
 {
     ui->setupUi(this);
+
+    // Вкладка Okko с перехватом URL DASH-манифеста.
+    QString okkoDataPath = QStandardPaths::writableLocation(
+        QStandardPaths::AppDataLocation);
+    if (okkoDataPath.isEmpty())
+        okkoDataPath = QDir::home().filePath(QStringLiteral(".local/share/KodiGui"));
+    const QString okkoStoragePath =
+        QDir(okkoDataPath).filePath(QStringLiteral("okko-profile/storage"));
+    const QString okkoCachePath =
+        QDir(okkoDataPath).filePath(QStringLiteral("okko-profile/cache"));
+    if (!QDir().mkpath(okkoStoragePath) || !QDir().mkpath(okkoCachePath))
+        qWarning().noquote() << "[Okko] Cannot create profile directories:"
+                             << okkoStoragePath << okkoCachePath;
+
+    auto *okkoProfile = new QWebEngineProfile(QStringLiteral("KodiGuiOkko"), this);
+    okkoProfile->setPersistentStoragePath(okkoStoragePath);
+    okkoProfile->setCachePath(okkoCachePath);
+    okkoProfile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+
+    auto *okkoContainer = new QWidget(ui->tabWidget);
+    auto *okkoLayout = new QVBoxLayout(okkoContainer);
+    okkoLayout->setContentsMargins(0, 0, 0, 0);
+    okkoLayout->setSpacing(4);
+
+    auto *mpdToolbar = new QWidget(okkoContainer);
+    auto *mpdToolbarLayout = new QHBoxLayout(mpdToolbar);
+    mpdToolbarLayout->setContentsMargins(6, 4, 6, 2);
+    auto *mpdUrlLabel = new QLabel(QStringLiteral("MPD:"), mpdToolbar);
+    auto *mpdUrlEdit = new QLineEdit(mpdToolbar);
+    mpdUrlEdit->setObjectName(QStringLiteral("okkoMpdUrlEdit"));
+    mpdUrlEdit->setReadOnly(true);
+    mpdUrlEdit->setPlaceholderText(
+        QStringLiteral("Откройте видео — URL DASH MPD появится здесь"));
+    mpdUrlEdit->setClearButtonEnabled(true);
+    auto *copyMpdUrlButton = new QPushButton(
+        QStringLiteral("Копировать MPD"), mpdToolbar);
+    mpdToolbarLayout->addWidget(mpdUrlLabel);
+    mpdToolbarLayout->addWidget(mpdUrlEdit, 1);
+    mpdToolbarLayout->addWidget(copyMpdUrlButton);
+    okkoLayout->addWidget(mpdToolbar);
+
+    auto *okkoMpdInterceptor = new OkkoMpdUrlInterceptor(
+        okkoProfile, this, [mpdUrlEdit](const QString &url) {
+            if (mpdUrlEdit->text() == url)
+                return;
+            mpdUrlEdit->setText(url);
+            qInfo().noquote() << "[Okko MPD] DASH manifest captured:" << url;
+        });
+    okkoProfile->setUrlRequestInterceptor(okkoMpdInterceptor);
+
+    connect(copyMpdUrlButton, &QPushButton::clicked, this, [this, mpdUrlEdit]() {
+        const QString url = mpdUrlEdit->text().trimmed();
+        if (url.isEmpty()) {
+            QMessageBox::information(this, QStringLiteral("Okko MPD"),
+                QStringLiteral("URL MPD ещё не получен. Запустите воспроизведение видео."));
+            return;
+        }
+        QApplication::clipboard()->setText(url);
+        qInfo() << "[Okko MPD] URL copied to clipboard";
+    });
+
+    auto *okkoView = new QWebEngineView(okkoContainer);
+    okkoView->setObjectName(QStringLiteral("okkoWebView"));
+    okkoView->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
+    okkoView->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
+    okkoView->settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
+    okkoView->settings()->setAttribute(QWebEngineSettings::PlaybackRequiresUserGesture, false);
+    okkoView->setPage(new QWebEnginePage(okkoProfile, okkoView));
+    okkoLayout->addWidget(okkoView, 1);
+    ui->tabWidget->addTab(okkoContainer, QStringLiteral("okko.tv"));
+    okkoView->setUrl(QUrl(QStringLiteral("https://okko.tv")));
 
     // Кнопки с тематическими иконками: в классической теме они отключаются.
     QList<QPushButton *> themedButtons;
