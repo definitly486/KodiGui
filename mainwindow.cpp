@@ -237,15 +237,15 @@ MainWindow::MainWindow(QWidget *parent)
         drmProcessStatusProcess->start(QStringLiteral("ssh"), {
             QStringLiteral("pi@192.168.8.45"),
             QStringLiteral("for name in yt-dlp streamlink ffmpeg N_m3u8DL-+; do "
-                           "pattern=$name; case \\"$name\\" in N_m3u8DL-+) pattern=N_m3u8DL ;; esac; "
+                           "pattern=$name; case $name in N_m3u8DL-+) pattern=N_m3u8DL ;; esac; "
                            "found=0; "
                            "for file in /proc/[0-9]*/cmdline; do "
-                           "pid=\u0024{file#/proc/}; pid=\u0024{pid%/cmdline}; "
-                           "[ \\"$pid\\" = \\"$\\" ] && continue; "
-                           "[ \\"$pid\\" = \\"$PPID\\" ] && continue; "
-                           "cmd=\u0024(tr '\\\\000' ' ' < \\"$file\\" 2>/dev/null) || continue; "
-                           "case \\"$cmd\\" in *\\"$pattern\\"*) found=1; break ;; esac; "
-                           "done; echo \\"$name=$found\\"; done")
+                           "pid=\${file#/proc/}; pid=\${pid%/cmdline}; "
+                           "[ $pid = $$ ] && continue; "
+                           "[ $pid = $PPID ] && continue; "
+                           "cmd=$(tr '\\000' ' ' < $file 2>/dev/null) || continue; "
+                           "case $cmd in *$pattern*) found=1; break ;; esac; "
+                           "done; echo $name=$found; done")
         });
     };
     connect(drmProcessStatusTimer, &QTimer::timeout, this, checkDrmProcesses);
