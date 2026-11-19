@@ -217,12 +217,29 @@ MainWindow::MainWindow(QWidget *parent)
             if (QDir().mkpath(downloadsPath)) {
                 const QString filePath = QDir(downloadsPath).filePath(
                     QStringLiteral("widevine_key.txt"));
+                // Сохраняем уже полученный ключ во второй строке.
+                QString existingKey;
+                {
+                    QFile oldFile(filePath);
+                    if (oldFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                        const QList<QByteArray> oldLines =
+                            oldFile.readAll().split('\n');
+                        if (oldLines.size() > 1)
+                            existingKey = QString::fromUtf8(oldLines.at(1)).trimmed();
+                    }
+                }
+
                 QFile file(filePath);
                 if (file.open(QIODevice::WriteOnly | QIODevice::Truncate |
                               QIODevice::Text)) {
                     file.write(url.toUtf8());
                     file.write("\n");
+                    if (!existingKey.isEmpty()) {
+                        file.write(existingKey.toUtf8());
+                        file.write("\n");
+                    }
                     file.close();
+                    qInfo().noquote() << "[Okko MPD] Saved URL to:" << filePath;
                 } else {
                     qWarning().noquote() << "[Okko MPD] Cannot write:"
                                          << filePath << file.errorString();
@@ -336,20 +353,27 @@ MainWindow::MainWindow(QWidget *parent)
 
                 // 3. Записываем в файл СТРОГО по формату
                 QString filePath = QDir::homePath() + "/Downloads/widevine_key.txt";
+
+                // MPD URL всегда остаётся в первой строке; ключ записывается во вторую.
+                QString mpdUrl;
+                {
+                    QFile oldFile(filePath);
+                    if (oldFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                        const QByteArray firstLine = oldFile.readLine().trimmed();
+                        mpdUrl = QString::fromUtf8(firstLine);
+                    }
+                }
+
                 QFile file(filePath);
-                
-                if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                if (file.open(QIODevice::WriteOnly | QIODevice::Truncate |
+                              QIODevice::Text)) {
                     QTextStream out(&file);
-                    
-                    // Строка 1: Пустая строка (или можно написать комментарий, например "# Widevine Key")
-                    out << "\n";
-                    
-                    // Строка 2: Строго только извлеченный ключ
-                    out << extractedKey << "\n";
-                    
+                    out << mpdUrl << "\n" << extractedKey << "\n";
                     file.close();
+                    qInfo().noquote() << "[OpenWV] Saved key to:" << filePath;
                 } else {
-                    okkoDrmLog->append(QStringLiteral("❌ Ошибка записи в файл: ") + filePath);
+                    okkoDrmLog->append(QStringLiteral("❌ Ошибка записи в файл: ") +
+                                       filePath + " — " + file.errorString());
                 }
                 
                 continue; // Прерываем итерацию, чтобы эта строка не дублировалась в общем логе
