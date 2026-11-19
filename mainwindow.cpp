@@ -778,12 +778,46 @@ MainWindow::MainWindow(QWidget *parent)
     themeCombo->addItem(QStringLiteral("Светлая"), QStringLiteral("light"));
     themeCombo->addItem(QStringLiteral("Ржавый трактор"), QStringLiteral("rust"));
     settingsLayout->addWidget(themeCombo);
+
+    auto *themeSettings = new QSettings(QStringLiteral("definitly486"),
+                                        QStringLiteral("KodiGui"), this);
+
+    auto *okkoDiagnosticsCheckBox = new QCheckBox(
+        QStringLiteral("Показывать диагностику OpenWV во вкладке Okko"), settingsPage);
+    okkoDiagnosticsCheckBox->setObjectName(QStringLiteral("showOkkoDiagnosticsCheckBox"));
+    const bool showOkkoDiagnostics = themeSettings->value(
+        QStringLiteral("okko/showDiagnostics"), true).toBool();
+    okkoDiagnosticsCheckBox->setChecked(showOkkoDiagnostics);
+    settingsLayout->addWidget(okkoDiagnosticsCheckBox);
+
+    auto *okkoMpdUrlCheckBox = new QCheckBox(
+        QStringLiteral("Показывать MPD URL во вкладке Okko"), settingsPage);
+    okkoMpdUrlCheckBox->setObjectName(QStringLiteral("showOkkoMpdUrlCheckBox"));
+    const bool showOkkoMpdUrl = themeSettings->value(
+        QStringLiteral("okko/showMpdUrl"), true).toBool();
+    okkoMpdUrlCheckBox->setChecked(showOkkoMpdUrl);
+    settingsLayout->addWidget(okkoMpdUrlCheckBox);
+
     settingsLayout->addStretch(1);
     ui->tabWidget->addTab(settingsPage, style()->standardIcon(QStyle::SP_DesktopIcon),
                           QStringLiteral("Настройки"));
 
-    auto *themeSettings = new QSettings(QStringLiteral("definitly486"),
-                                        QStringLiteral("KodiGui"), this);
+    drmLogHeader->setVisible(showOkkoDiagnostics);
+    okkoDrmLog->setVisible(showOkkoDiagnostics);
+    mpdToolbar->setVisible(showOkkoMpdUrl);
+
+    connect(okkoDiagnosticsCheckBox, &QCheckBox::toggled, this,
+            [themeSettings, drmLogHeader, okkoDrmLog](bool visible) {
+        drmLogHeader->setVisible(visible);
+        okkoDrmLog->setVisible(visible);
+        themeSettings->setValue(QStringLiteral("okko/showDiagnostics"), visible);
+    });
+    connect(okkoMpdUrlCheckBox, &QCheckBox::toggled, this,
+            [themeSettings, mpdToolbar](bool visible) {
+        mpdToolbar->setVisible(visible);
+        themeSettings->setValue(QStringLiteral("okko/showMpdUrl"), visible);
+    });
+
     const QString savedTheme = themeSettings->value(QStringLiteral("appearance/theme"),
                                                      QStringLiteral("classic")).toString();
     const QString initialTheme = (savedTheme == QStringLiteral("light")
