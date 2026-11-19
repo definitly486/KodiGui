@@ -2043,7 +2043,7 @@ void MainWindow::on_getonairnow_clicked()
 
 void MainWindow::on_playDrmStreamButton_clicked()
 {
-    postPlayerOpenFile("kodigui/drm/hls/master.m3u8");
+    postPlayerOpenFile("/home/pi/kodigui/drm/hls/master.m3u8");
 }
 
 void MainWindow::on_stopDrmPlaybackButton_clicked()
