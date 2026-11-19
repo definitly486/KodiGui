@@ -847,6 +847,13 @@
            </widget>
           </item>
           <item>
+           <widget class="QPushButton" name="startDrmLegacyDownloadButton">
+            <property name="text">
+             <string>run (legacy)</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QPushButton" name="playDrmHlsButton">
             <property name="text">
              <string>Play</string>
