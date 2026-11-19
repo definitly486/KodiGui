@@ -268,6 +268,114 @@ MainWindow::MainWindow(QWidget *parent)
         checkDrmProcesses();
     }
 
+    // Live status of YouTube helper processes on the Raspberry Pi.
+    QWidget *youtubePage = nullptr;
+    for (int i = 0; i < ui->tabWidget->count(); ++i) {
+        if (ui->tabWidget->tabText(i).compare(QStringLiteral("YouTube"), Qt::CaseInsensitive) == 0) {
+            youtubePage = ui->tabWidget->widget(i);
+            break;
+        }
+    }
+
+    if (youtubePage) {
+        auto *youtubeStatusLayout = new QHBoxLayout();
+        youtubeStatusLayout->setContentsMargins(6, 2, 6, 2);
+        youtubeStatusLayout->setSpacing(18);
+
+        auto makeYoutubeProcessStatus = [youtubePage, youtubeStatusLayout](const QString &name) {
+            auto *label = new QLabel(name + QStringLiteral(": проверка…"), youtubePage);
+            label->setObjectName(name + QStringLiteral("YoutubeProcessStatus"));
+            label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
+            youtubeStatusLayout->addWidget(label);
+            return label;
+        };
+        auto *youtubeYtDlpStatusLabel = makeYoutubeProcessStatus(QStringLiteral("yt-dlp"));
+        auto *youtubeStreamlinkStatusLabel = makeYoutubeProcessStatus(QStringLiteral("streamlink"));
+        auto *youtubeFfmpegStatusLabel = makeYoutubeProcessStatus(QStringLiteral("ffmpeg"));
+        youtubeStatusLayout->addStretch(1);
+
+        if (auto *pageLayout = qobject_cast<QVBoxLayout *>(youtubePage->layout())) {
+            pageLayout->insertLayout(0, youtubeStatusLayout);
+        } else {
+            auto *pageLayout = new QVBoxLayout(youtubePage);
+            pageLayout->addLayout(youtubeStatusLayout);
+        }
+
+        auto *youtubeStatusTimer = new QTimer(this);
+        auto *youtubeStatusProcess = new QProcess(this);
+        youtubeStatusTimer->setInterval(2500);
+
+        auto setYoutubeProcessStatus = [](QLabel *label, const QString &name, bool running) {
+            label->setText(QStringLiteral("%1: %2")
+                               .arg(name, running ? QStringLiteral("работает")
+                                                 : QStringLiteral("не работает")));
+            label->setStyleSheet(running
+                ? QStringLiteral("font-weight: 600; color: #20a464;")
+                : QStringLiteral("font-weight: 600; color: #d45b5b;"));
+        };
+
+        auto setYoutubeConnectionUnavailable = [=]() {
+            for (QLabel *label : {youtubeYtDlpStatusLabel, youtubeStreamlinkStatusLabel,
+                                  youtubeFfmpegStatusLabel}) {
+                label->setText(label->objectName().remove(QStringLiteral("YoutubeProcessStatus"))
+                               + QStringLiteral(": нет связи"));
+                label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
+            }
+        };
+
+        connect(youtubeStatusProcess,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
+            if (exitStatus != QProcess::NormalExit || exitCode != 0) {
+                setYoutubeConnectionUnavailable();
+                return;
+            }
+
+            const QString output = QString::fromUtf8(
+                youtubeStatusProcess->readAllStandardOutput()).trimmed();
+            setYoutubeProcessStatus(youtubeYtDlpStatusLabel, QStringLiteral("yt-dlp"),
+                                    output.contains(QStringLiteral("yt-dlp=1")));
+            setYoutubeProcessStatus(youtubeStreamlinkStatusLabel, QStringLiteral("streamlink"),
+                                    output.contains(QStringLiteral("streamlink=1")));
+            setYoutubeProcessStatus(youtubeFfmpegStatusLabel, QStringLiteral("ffmpeg"),
+                                    output.contains(QStringLiteral("ffmpeg=1")));
+        });
+
+        connect(youtubeStatusProcess, &QProcess::errorOccurred, this,
+                [=](QProcess::ProcessError) { setYoutubeConnectionUnavailable(); });
+
+        auto checkYoutubeProcesses = [=]() {
+            if (youtubeStatusProcess->state() != QProcess::NotRunning)
+                return;
+            youtubeStatusProcess->start(QStringLiteral("ssh"), {
+                QStringLiteral("pi@192.168.8.45"),
+                QStringLiteral("for name in yt-dlp streamlink ffmpeg; do "
+                               "ps -eo comm= | awk -v n=\\\"$name\\\" "
+                               "'$1 == n {found=1} END {print n \\\"=\\\" (found ? 1 : 0)}'; "
+                               "done")
+            });
+        };
+
+        const int youtubePageIndex = ui->tabWidget->indexOf(youtubePage);
+        connect(youtubeStatusTimer, &QTimer::timeout, this, checkYoutubeProcesses);
+        connect(ui->tabWidget, &QTabWidget::currentChanged, this,
+                [=](int index) {
+            if (index == youtubePageIndex) {
+                if (!youtubeStatusTimer->isActive()) {
+                    youtubeStatusTimer->start();
+                    if (youtubeStatusProcess->state() == QProcess::NotRunning)
+                        checkYoutubeProcesses();
+                }
+            } else {
+                youtubeStatusTimer->stop();
+            }
+        });
+        if (ui->tabWidget->currentIndex() == youtubePageIndex) {
+            youtubeStatusTimer->start();
+            checkYoutubeProcesses();
+        }
+    }
+
     // Persistent Okko profile stored locally on the machine running KodiGui.
     // Do not use a remote/server path: Qt WebEngine and its extensions run in this
     // process and need a writable local profile directory.
