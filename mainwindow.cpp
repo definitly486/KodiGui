@@ -260,7 +260,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     if (ui->tabWidget->currentIndex() == drmPageIndex) {
         drmProcessStatusTimer->start();
-        drmProcessStatusTimer->timeout();
+        checkDrmProcesses();
     }
 
     // Persistent Okko profile stored locally on the machine running KodiGui.
