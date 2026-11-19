@@ -271,7 +271,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Live status of YouTube helper processes on the Raspberry Pi.
     QWidget *youtubePage = nullptr;
     for (int i = 0; i < ui->tabWidget->count(); ++i) {
-        if (ui->tabWidget->tabText(i).compare(QStringLiteral("YouTube"), Qt::CaseInsensitive) == 0) {
+        if (ui->tabWidget->tabText(i).compare(QStringLiteral("Youtube Pi"), Qt::CaseInsensitive) == 0) {
             youtubePage = ui->tabWidget->widget(i);
             break;
         }
