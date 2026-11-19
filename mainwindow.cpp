@@ -2113,10 +2113,74 @@ void MainWindow::on_startDrmDownloadButton_clicked()
 set -u
 LOG="$HOME/kodigui/drm-mux.log"
 ts() { date +%H:%M:%S; }
-echo "[$(ts)] Dynamic HLS publisher started" >> "$LOG"
-TASK_ROOT="$HOME/kodigui/drm/tmp/drm"
+ROOT="$HOME/kodigui/drm"
+OUT="$ROOT/hls"
+TASK_ROOT="$ROOT/tmp/drm"
+VIDEO_FILE="$ROOT/drm.mp4"
+AUDIO_FILE="$ROOT/drm.rus.m4a"
+echo "[$(ts)] HLS publisher started" >> "$LOG"
+mkdir -p "$OUT"
+
+downloader_running() {
+  local p=""
+  [ -s "$HOME/kodigui/drm_download.pid" ] && p=$(cat "$HOME/kodigui/drm_download.pid" 2>/dev/null || true)
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null
+}
+
+publish_merged_files() {
+  if [ ! -s "$VIDEO_FILE" ] || [ ! -s "$AUDIO_FILE" ]; then
+    echo "[$(ts)] ERROR: merged files are not ready (video=$VIDEO_FILE audio=$AUDIO_FILE)" >> "$LOG"
+    return 1
+  fi
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    echo "[$(ts)] ERROR: ffmpeg not found; cannot create final HLS from merged files" >> "$LOG"
+    return 1
+  fi
+
+  local final="$OUT/final"
+  mkdir -p "$final"
+  find "$final" -mindepth 1 -maxdepth 1 -type f -delete
+
+  echo "[$(ts)] Creating final fMP4 HLS from merged MP4/M4A files" >> "$LOG"
+  ffmpeg -hide_banner -loglevel warning -y -i "$VIDEO_FILE" \
+    -map 0:v:0 -c:v copy -an \
+    -f hls -hls_time 6 -hls_playlist_type vod \
+    -hls_segment_type fmp4 -hls_fmp4_init_filename video_init.mp4 \
+    -hls_segment_filename "$final/video_%06d.m4s" \
+    "$final/video.m3u8" >> "$LOG" 2>&1
+  local video_rc=$?
+
+  ffmpeg -hide_banner -loglevel warning -y -i "$AUDIO_FILE" \
+    -map 0:a:0 -c:a copy -vn \
+    -f hls -hls_time 6 -hls_playlist_type vod \
+    -hls_segment_type fmp4 -hls_fmp4_init_filename audio_init.mp4 \
+    -hls_segment_filename "$final/audio_%06d.m4s" \
+    "$final/audio.m3u8" >> "$LOG" 2>&1
+  local audio_rc=$?
+
+  if [ "$video_rc" -ne 0 ] || [ "$audio_rc" -ne 0 ] ||
+     ! grep -q '#EXTINF:' "$final/video.m3u8" 2>/dev/null ||
+     ! grep -q '#EXTINF:' "$final/audio.m3u8" 2>/dev/null ||
+     [ ! -s "$final/video_init.mp4" ] || [ ! -s "$final/audio_init.mp4" ]; then
+    echo "[$(ts)] ERROR: ffmpeg HLS generation failed (video_rc=$video_rc audio_rc=$audio_rc)" >> "$LOG"
+    return 1
+  fi
+
+  local master_tmp="$OUT/master.m3u8.tmp"
+  cat > "$master_tmp" <<'MASTER'
+#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Русский",LANGUAGE="ru",DEFAULT=YES,AUTOSELECT=YES,URI="final/audio.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=700000,AUDIO="audio"
+final/video.m3u8
+MASTER
+  mv -f "$master_tmp" "$OUT/master.m3u8"
+  echo "[$(ts)] Final HLS ready: video and audio playlists generated from merged files" >> "$LOG"
+  return 0
+}
+
 V=""; A=""; VI=""; AI=""
-for i in $(seq 1 120); do
+for i in $(seq 1 1200); do
   # N_m3u8DL-RE stores live tracks under <tmp-dir>/<save-name>/<track>.
   # Discover recursively because track folder names vary between releases.
   TRACKS=$(python3 - "$TASK_ROOT" <<'PY_TRACK_DISCOVERY'
@@ -2166,14 +2230,27 @@ PY_TRACK_DISCOVERY
     for candidate in "$A/_init_dec.mp4" "$A/_init.mp4"; do
       if [ -s "$candidate" ]; then AI="$candidate"; break; fi
     done
-    if [ -n "$VI" ] && [ -n "$AI" ]; then break; fi
+    if [ -n "$VI" ] && [ -n "$AI" ]; then
+      echo "[$(ts)] Found live tracks: video=$V audio=$A" >> "$LOG"
+      break
+    fi
+  fi
+  if ! downloader_running; then
+    echo "[$(ts)] Downloader finished before both live tracks were available; switching to merged-file HLS" >> "$LOG"
+    break
   fi
   sleep 1
 done
+
 if [ -z "$V" ] || [ -z "$A" ] || [ -z "$VI" ] || [ -z "$AI" ]; then
-  echo "[$(ts)] ERROR: live track folders/init segments not found (task_root=$TASK_ROOT video=$V audio=$A)" >> "$LOG"
+  # Wait for the downloader's final merge/rename to finish before using MP4/M4A.
+  while downloader_running; do sleep 2; done
+  if publish_merged_files; then
+    echo "[$(ts)] HLS publisher finished successfully (merged-file fallback)" >> "$LOG"
+    exit 0
+  fi
   echo "[$(ts)] DRM output tree:" >> "$LOG"
-  find "$HOME/kodigui/drm" -maxdepth 5 -type f 2>/dev/null | head -n 120 >> "$LOG"
+  find "$ROOT" -maxdepth 5 -type f 2>/dev/null | head -n 120 >> "$LOG"
   echo "[$(ts)] Downloader log tail:" >> "$LOG"
   tail -n 50 "$HOME/kodigui/drm-download.log" 2>/dev/null >> "$LOG"
   exit 1
@@ -2311,9 +2388,22 @@ PY_BUILDER
   if [ "$vc" -ne "$LAST_V" ] || [ "$ac" -ne "$LAST_A" ]; then
     echo "[$(ts)] HLS updated: video=$vc audio=$ac" >> "$LOG"; LAST_V=$vc; LAST_A=$ac
   fi
-  if [ "$finished" -eq 1 ]; then echo "[$(ts)] Downloader finished; final HLS playlist published" >> "$LOG"; break; fi
+  if [ "$finished" -eq 1 ]; then
+    echo "[$(ts)] Downloader finished; finalizing HLS from merged output files" >> "$LOG"
+    break
+  fi
+  # If N_m3u8DL-RE removes a track directory during final merging, stop using
+  # the disappearing fragments and let the final MP4/M4A fallback take over.
+  if [ ! -d "$V" ] || [ ! -d "$A" ]; then
+    echo "[$(ts)] Live segment directory disappeared; waiting for final merge" >> "$LOG"
+    while downloader_running; do sleep 2; done
+    break
+  fi
   sleep 1
 done
+if [ -s "$VIDEO_FILE" ] && [ -s "$AUDIO_FILE" ]; then
+  publish_merged_files || exit 1
+fi
 echo "[$(ts)] HLS publisher finished" >> "$LOG"
 )DRM_HLS_SCRIPT");
     // Уникальный маркер не позволяет принять плейлист от предыдущего запуска.
@@ -2384,7 +2474,7 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                 if (drmFileCheckTimer)
                     drmFileCheckTimer->stop();
                 QMessageBox::information(this, "DRM",
-                    "Новый динамический HLS-плейлист опубликован.\n"
+                    "HLS-плейлист опубликован.\n"
                     "Нажмите Play — Kodi откроет поток один раз\n"
                     "и будет получать новые сегменты по мере загрузки.");
             } else if (output.contains("DRM_MUX_FAILED")) {
@@ -2405,10 +2495,10 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                 return;
 
             // Ограничиваем ожидание, чтобы при ошибке SSH/загрузчика не проверять бесконечно.
-            if (++drmFileCheckAttempts > 80) {
+            if (++drmFileCheckAttempts > 1200) {
                 drmFileCheckTimer->stop();
                 QMessageBox::warning(this, "DRM",
-                    "За ~2 минуты HLS-плейлист не появился.\n"
+                    "За ~30 минут HLS-плейлист не появился.\n"
                     "Проверьте $HOME/kodigui/drm-download.log и $HOME/kodigui/drm-mux.log на Raspberry Pi.");
                 return;
             }
