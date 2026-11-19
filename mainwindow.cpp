@@ -163,6 +163,105 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    // Live status of the DRM helper processes running on the Raspberry Pi.
+    auto *drmProcessStatusLayout = new QHBoxLayout();
+    drmProcessStatusLayout->setContentsMargins(6, 2, 6, 2);
+    drmProcessStatusLayout->setSpacing(18);
+
+    auto makeDrmProcessStatus = [this, drmProcessStatusLayout](const QString &name) {
+        auto *label = new QLabel(name + QStringLiteral(": проверка…"), ui->drm);
+        label->setObjectName(name + QStringLiteral("DrmProcessStatus"));
+        label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
+        drmProcessStatusLayout->addWidget(label);
+        return label;
+    };
+    auto *ytDlpStatusLabel = makeDrmProcessStatus(QStringLiteral("yt-dlp"));
+    auto *streamlinkStatusLabel = makeDrmProcessStatus(QStringLiteral("streamlink"));
+    auto *ffmpegStatusLabel = makeDrmProcessStatus(QStringLiteral("ffmpeg"));
+    drmProcessStatusLayout->addStretch(1);
+    ui->drmLayout->insertLayout(2, drmProcessStatusLayout);
+
+    auto *drmProcessStatusTimer = new QTimer(this);
+    auto *drmProcessStatusProcess = new QProcess(this);
+    drmProcessStatusTimer->setInterval(2500);
+
+    auto setDrmProcessStatus = [](QLabel *label, const QString &name, bool running) {
+        label->setText(QStringLiteral("%1: %2")
+                           .arg(name, running ? QStringLiteral("работает")
+                                             : QStringLiteral("не работает")));
+        label->setStyleSheet(running
+            ? QStringLiteral("font-weight: 600; color: #20a464;")
+            : QStringLiteral("font-weight: 600; color: #d45b5b;"));
+    };
+
+    connect(drmProcessStatusProcess,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (exitStatus != QProcess::NormalExit || exitCode != 0) {
+            const QString unavailable = QStringLiteral("нет связи");
+            for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
+                                  ffmpegStatusLabel}) {
+                label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
+                               + QStringLiteral(": ") + unavailable);
+                label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
+            }
+            return;
+        }
+
+        const QString output = QString::fromUtf8(
+            drmProcessStatusProcess->readAllStandardOutput()).trimmed();
+        setDrmProcessStatus(ytDlpStatusLabel, QStringLiteral("yt-dlp"),
+                            output.contains(QStringLiteral("yt-dlp=1")));
+        setDrmProcessStatus(streamlinkStatusLabel, QStringLiteral("streamlink"),
+                            output.contains(QStringLiteral("streamlink=1")));
+        setDrmProcessStatus(ffmpegStatusLabel, QStringLiteral("ffmpeg"),
+                            output.contains(QStringLiteral("ffmpeg=1")));
+    });
+
+    connect(drmProcessStatusProcess, &QProcess::errorOccurred, this,
+            [=](QProcess::ProcessError) {
+        for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
+                              ffmpegStatusLabel}) {
+            label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
+                           + QStringLiteral(": нет связи"));
+            label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
+        }
+    });
+
+    connect(drmProcessStatusTimer, &QTimer::timeout, this, [=]() {
+        if (drmProcessStatusProcess->state() != QProcess::NotRunning)
+            return;
+        drmProcessStatusProcess->start(QStringLiteral("ssh"), {
+            QStringLiteral("pi@192.168.8.45"),
+            QStringLiteral("for name in yt-dlp streamlink ffmpeg; do "
+                           "if pgrep -af \"[y]t-dlp\" >/dev/null 2>&1 && [ \"$name\" = yt-dlp ]; then "
+                           "echo yt-dlp=1; "
+                           "elif pgrep -af \"[s]treamlink\" >/dev/null 2>&1 && [ \"$name\" = streamlink ]; then "
+                           "echo streamlink=1; "
+                           "elif pgrep -af \"[f]fmpeg\" >/dev/null 2>&1 && [ \"$name\" = ffmpeg ]; then "
+                           "echo ffmpeg=1; "
+                           "else echo \"$name=0\"; fi; done")
+        });
+    });
+
+    const int drmPageIndex = ui->tabWidget->indexOf(ui->drm);
+    connect(ui->tabWidget, &QTabWidget::currentChanged, this,
+            [=](int index) {
+        if (index == drmPageIndex) {
+            if (!drmProcessStatusTimer->isActive()) {
+                drmProcessStatusTimer->start();
+                if (drmProcessStatusProcess->state() == QProcess::NotRunning)
+                    drmProcessStatusTimer->timeout();
+            }
+        } else {
+            drmProcessStatusTimer->stop();
+        }
+    });
+    if (ui->tabWidget->currentIndex() == drmPageIndex) {
+        drmProcessStatusTimer->start();
+        drmProcessStatusTimer->timeout();
+    }
+
     // Persistent Okko profile stored locally on the machine running KodiGui.
     // Do not use a remote/server path: Qt WebEngine and its extensions run in this
     // process and need a writable local profile directory.
