@@ -15,7 +15,6 @@
 
 
 class QWebEngineProfile;
-class QWebEngineExtensionManager;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -121,7 +120,6 @@ protected:
    private:
  Ui::MainWindow *ui;
  QWebEngineProfile *okkoProfile = nullptr;
- QWebEngineExtensionManager *okkoExtensionManager = nullptr;
  QProcess *pythonProcess;        // ← вот это
  QProcess *kodidlpProcess;
  QTimer *drmFileCheckTimer = nullptr;
