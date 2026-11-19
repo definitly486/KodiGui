@@ -350,8 +350,8 @@ MainWindow::MainWindow(QWidget *parent)
             youtubeStatusProcess->start(QStringLiteral("ssh"), {
                 QStringLiteral("pi@192.168.8.45"),
                 QStringLiteral("for name in yt-dlp streamlink ffmpeg; do "
-                               "ps -eo comm= | awk -v n=\\\"$name\\\" "
-                               "'$1 == n {found=1} END {print n \\\"=\\\" (found ? 1 : 0)}'; "
+                               "ps -eo comm= | awk -v n=$name "
+                               "'$1 == n {found=1} END {print n \"=\" (found ? 1 : 0)}'; "
                                "done")
             });
         };
