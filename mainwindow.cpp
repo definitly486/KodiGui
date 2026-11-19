@@ -2180,63 +2180,103 @@ MASTER
 }
 
 V=""; A=""; VI=""; AI=""
+SOURCE_V=""; SOURCE_A=""
+LIVE_ROOT="$OUT/live"
+LIVE_V="$LIVE_ROOT/video"
+LIVE_A="$LIVE_ROOT/audio"
+mkdir -p "$LIVE_V" "$LIVE_A"
+
+# Discover and preserve each rendition independently. N_m3u8DL-RE may finish
+# one track and remove its temporary directory while the other track is still
+# downloading, so never wait for both source directories before copying.
 for i in $(seq 1 1200); do
-  # N_m3u8DL-RE stores live tracks under <tmp-dir>/<save-name>/<track>.
-  # Discover recursively because track folder names vary between releases.
-  TRACKS=$(python3 - "$TASK_ROOT" <<'PY_TRACK_DISCOVERY'
-import os, pathlib, subprocess, sys
-base = pathlib.Path(sys.argv[1])
-video = audio = ""
-for current, dirs, names in os.walk(base):
-    here = pathlib.Path(current)
-    init = next((here / n for n in ("_init_dec.mp4", "_init.mp4")
-                 if (here / n).is_file()), None)
-    if init is None or not any(n.endswith(".m4s") for n in names):
-        continue
-    label = here.name.lower()
-    kind = ""
-    if any(token in label for token in ("video", "avc1", "h264")):
-        kind = "video"
-    elif any(token in label for token in ("audio", "mp4a", "aac")):
-        kind = "audio"
-    else:
-        try:
-            probe = subprocess.run(
-                ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
-                 "-of", "csv=p=0", str(init)],
-                capture_output=True, text=True, timeout=5)
-            media = set(probe.stdout.lower().split())
-            if "video" in media:
-                kind = "video"
-            elif "audio" in media:
-                kind = "audio"
-        except (OSError, subprocess.SubprocessError):
-            pass
-    if kind == "video" and not video:
-        video = current
-    elif kind == "audio" and not audio:
-        audio = current
-print(video)
-print(audio)
+  TRACKS=$(python3 - "$TASK_ROOT" "$LIVE_V" "$LIVE_A" <<'PY_TRACK_DISCOVERY'
+import os, pathlib, shutil, subprocess, sys, time
+base, live_v, live_a = map(pathlib.Path, sys.argv[1:4])
+found = {"video": "", "audio": ""}
+if base.is_dir():
+    for current, dirs, names in os.walk(base):
+        here = pathlib.Path(current)
+        init = next((here / n for n in ("_init_dec.mp4", "_init.mp4")
+                     if (here / n).is_file() and (here / n).stat().st_size > 0), None)
+        fragments = sorted(here.glob("*.m4s"))
+        if init is None or not fragments:
+            continue
+        label = (str(here) + " " + " ".join(names)).lower()
+        kind = ""
+        if any(t in label for t in ("video", "avc1", "h264")):
+            kind = "video"
+        elif any(t in label for t in ("audio", "mp4a", "aac")):
+            kind = "audio"
+        else:
+            try:
+                probe = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries",
+                     "stream=codec_type", "-of", "csv=p=0", str(init)],
+                    capture_output=True, text=True, timeout=4)
+                media = set(probe.stdout.lower().split())
+                if "video" in media: kind = "video"
+                elif "audio" in media: kind = "audio"
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if not kind or found[kind]:
+            continue
+        found[kind] = str(here)
+        destination = live_v if kind == "video" else live_a
+
+        def stable_copy(src, dst):
+            try:
+                first = src.stat()
+                time.sleep(0.08)
+                second = src.stat()
+                if first.st_size <= 0 or first.st_size != second.st_size or first.st_mtime_ns != second.st_mtime_ns:
+                    return
+                tmp = dst.with_name(dst.name + ".part")
+                shutil.copyfile(src, tmp)
+                if tmp.stat().st_size == second.st_size:
+                    os.replace(tmp, dst)
+                else:
+                    tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        stable_copy(init, destination / init.name)
+        for fragment in fragments:
+            stable_copy(fragment, destination / fragment.name)
+
+print(found["video"])
+print(found["audio"])
+print(sum(1 for _ in live_v.glob("*.m4s")))
+print(sum(1 for _ in live_a.glob("*.m4s")))
 PY_TRACK_DISCOVERY
 )
-  V=$(printf '%s\n' "$TRACKS" | sed -n '1p')
-  A=$(printf '%s\n' "$TRACKS" | sed -n '2p')
-  if [ -n "$V" ] && [ -n "$A" ]; then
-    VI=""; AI=""
-    for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
-      if [ -s "$candidate" ]; then VI="$candidate"; break; fi
-    done
-    for candidate in "$A/_init_dec.mp4" "$A/_init.mp4"; do
-      if [ -s "$candidate" ]; then AI="$candidate"; break; fi
-    done
-    if [ -n "$VI" ] && [ -n "$AI" ]; then
-      echo "[$(ts)] Found live tracks: video=$V audio=$A" >> "$LOG"
-      break
-    fi
+  SOURCE_V=$(printf '%s\n' "$TRACKS" | sed -n '1p')
+  SOURCE_A=$(printf '%s\n' "$TRACKS" | sed -n '2p')
+  VC=$(printf '%s\n' "$TRACKS" | sed -n '3p')
+  AC=$(printf '%s\n' "$TRACKS" | sed -n '4p')
+  VI=""; AI=""
+  for candidate in "$LIVE_V/_init_dec.mp4" "$LIVE_V/_init.mp4"; do
+    if [ -s "$candidate" ]; then VI="$candidate"; break; fi
+  done
+  for candidate in "$LIVE_A/_init_dec.mp4" "$LIVE_A/_init.mp4"; do
+    if [ -s "$candidate" ]; then AI="$candidate"; break; fi
+  done
+
+  if [ -n "$SOURCE_V" ] && [ -n "$SOURCE_A" ] &&
+     [ -n "$VI" ] && [ -n "$AI" ] &&
+     [ "\${VC:-0}" -ge 2 ] && [ "\${AC:-0}" -ge 2 ]; then
+    V="$LIVE_V"; A="$LIVE_A"
+    echo "[$(ts)] Live tracks preserved independently: video=$SOURCE_V ($VC fragments), audio=$SOURCE_A ($AC fragments)" >> "$LOG"
+    break
   fi
+
   if ! downloader_running; then
-    echo "[$(ts)] Downloader finished before both live tracks were available; switching to merged-file HLS" >> "$LOG"
+    echo "[$(ts)] Downloader stopped; preserved tracks: video=\${VC:-0}, audio=\${AC:-0}; checking whether live playlists can still be built" >> "$LOG"
+    if [ -n "$SOURCE_V" ] && [ -n "$SOURCE_A" ] &&
+       [ -n "$VI" ] && [ -n "$AI" ] &&
+       [ "\${VC:-0}" -ge 2 ] && [ "\${AC:-0}" -ge 2 ]; then
+      V="$LIVE_V"; A="$LIVE_A"
+    fi
     break
   fi
   sleep 1
