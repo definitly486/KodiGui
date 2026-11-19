@@ -52,6 +52,7 @@
 #include <QWebEngineUrlRequestInterceptor>
 #include <QApplication>
 #include <QClipboard>
+#include <utility>
 #include <QFileDialog>
 #include <QPushButton>
 #include <QMenu>
@@ -79,9 +80,9 @@ namespace {
 class OkkoMpdUrlInterceptor final : public QWebEngineUrlRequestInterceptor
 {
 public:
-    OkkoMpdUrlInterceptor(QObject *context,
+    OkkoMpdUrlInterceptor(QObject *parent, QObject *context,
                           std::function<void(const QString &)> callback)
-        : QWebEngineUrlRequestInterceptor(context)
+        : QWebEngineUrlRequestInterceptor(parent)
         , m_context(context)
         , m_callback(std::move(callback))
     {
@@ -228,7 +229,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Capture DASH manifests from Okko requests and update the UI on its thread.
     auto *okkoMpdInterceptor = new OkkoMpdUrlInterceptor(
-        this, [mpdUrlEdit](const QString &url) {
+        okkoProfile, this, [mpdUrlEdit](const QString &url) {
             if (mpdUrlEdit->text() == url)
                 return;
             mpdUrlEdit->setText(url);
