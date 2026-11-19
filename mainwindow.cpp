@@ -49,6 +49,9 @@
 #include <QWebEngineExtensionInfo>
 #include <QWebEngineCertificateError>
 #include <QWebEngineSettings>
+#include <QWebEngineUrlRequestInterceptor>
+#include <QApplication>
+#include <QClipboard>
 #include <QFileDialog>
 #include <QPushButton>
 #include <QMenu>
@@ -73,6 +76,30 @@ void runCommand(const QString &command, const QStringList &args = {});
 #include <unistd.h>
 
 namespace {
+class OkkoMpdUrlInterceptor final : public QWebEngineUrlRequestInterceptor
+{
+    Q_OBJECT
+
+public:
+    explicit OkkoMpdUrlInterceptor(QObject *parent = nullptr)
+        : QWebEngineUrlRequestInterceptor(parent)
+    {
+    }
+
+    void interceptRequest(QWebEngineUrlRequestInfo &info) override
+    {
+        const QUrl requestUrl = info.requestUrl();
+        const QString scheme = requestUrl.scheme();
+        if ((scheme == QStringLiteral("http") || scheme == QStringLiteral("https")) &&
+            requestUrl.path().contains(QStringLiteral(".mpd"), Qt::CaseInsensitive)) {
+            emit mpdUrlFound(requestUrl.toString());
+        }
+    }
+
+signals:
+    void mpdUrlFound(const QString &url);
+};
+
 QPointer<QTextEdit> debugOutput;
 std::atomic_bool debugOutputEnabled{true};
 
@@ -150,6 +177,12 @@ MainWindow::MainWindow(QWidget *parent)
     okkoProfile->setCachePath(cachePath);
     okkoProfile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
 
+    // Capture DASH manifests requested by the Okko WebEngine profile.
+    // The interceptor runs outside the GUI thread; the signal is delivered
+    // to MainWindow through Qt's queued connection.
+    auto *okkoMpdInterceptor = new OkkoMpdUrlInterceptor(okkoProfile);
+    okkoProfile->setUrlRequestInterceptor(okkoMpdInterceptor);
+
     // Встроенная вкладка Okko работает внутри Qt WebEngine.
     auto *okkoContainer = new QWidget(ui->tabWidget);
     auto *okkoLayout = new QVBoxLayout(okkoContainer);
@@ -170,6 +203,41 @@ MainWindow::MainWindow(QWidget *parent)
     okkoToolbarLayout->addWidget(manageOkkoExtensionsButton);
     okkoToolbarLayout->addWidget(okkoExtensionStatus, 1);
     okkoLayout->addWidget(okkoToolbar);
+
+    auto *mpdToolbar = new QWidget(okkoContainer);
+    auto *mpdToolbarLayout = new QHBoxLayout(mpdToolbar);
+    mpdToolbarLayout->setContentsMargins(6, 0, 6, 4);
+    auto *mpdUrlLabel = new QLabel(QStringLiteral("MPD:"), mpdToolbar);
+    auto *mpdUrlEdit = new QLineEdit(mpdToolbar);
+    mpdUrlEdit->setObjectName(QStringLiteral("okkoMpdUrlEdit"));
+    mpdUrlEdit->setReadOnly(true);
+    mpdUrlEdit->setPlaceholderText(
+        QStringLiteral("Откройте видео — URL DASH MPD появится здесь"));
+    mpdUrlEdit->setClearButtonEnabled(true);
+    auto *copyMpdUrlButton = new QPushButton(
+        QStringLiteral("Копировать MPD"), mpdToolbar);
+    mpdToolbarLayout->addWidget(mpdUrlLabel);
+    mpdToolbarLayout->addWidget(mpdUrlEdit, 1);
+    mpdToolbarLayout->addWidget(copyMpdUrlButton);
+    okkoLayout->addWidget(mpdToolbar);
+
+    connect(okkoMpdInterceptor, &OkkoMpdUrlInterceptor::mpdUrlFound,
+            this, [mpdUrlEdit](const QString &url) {
+        if (mpdUrlEdit->text() == url)
+            return;
+        mpdUrlEdit->setText(url);
+        qInfo().noquote() << "[Okko MPD] DASH manifest captured:" << url;
+    });
+    connect(copyMpdUrlButton, &QPushButton::clicked, this, [this, mpdUrlEdit]() {
+        const QString url = mpdUrlEdit->text().trimmed();
+        if (url.isEmpty()) {
+            QMessageBox::information(this, QStringLiteral("Okko MPD"),
+                QStringLiteral("URL MPD ещё не получен. Запустите воспроизведение видео."));
+            return;
+        }
+        QApplication::clipboard()->setText(url);
+        qInfo() << "[Okko MPD] URL copied to clipboard";
+    });
 
     auto *okkoView = new QWebEngineView(okkoContainer);
     okkoView->setObjectName(QStringLiteral("okkoWebView"));
