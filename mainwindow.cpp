@@ -2231,8 +2231,14 @@ if base.is_dir():
                 second = src.stat()
                 if first.st_size <= 0 or first.st_size != second.st_size or first.st_mtime_ns != second.st_mtime_ns:
                     return
+                try:
+                    existing = dst.stat()
+                    if existing.st_size == second.st_size and existing.st_mtime_ns == second.st_mtime_ns:
+                        return
+                except OSError:
+                    pass
                 tmp = dst.with_name(dst.name + ".part")
-                shutil.copyfile(src, tmp)
+                shutil.copy2(src, tmp)
                 if tmp.stat().st_size == second.st_size:
                     os.replace(tmp, dst)
                 else:
