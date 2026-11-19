@@ -1615,6 +1615,9 @@ void MainWindow::on_startYoutubeStreamlinkButton_clicked()
         "printf '\\n===== Streamlink start: %s =====\\n' \"$(date -Is)\" "
         ">> \"$HOME/kodigui/streamlink.log\"; "
         "nohup setsid \"$HOME/.local/bin/streamlink\" "
+        "--stream-segment-attempts 10 "
+        "--stream-segment-timeout 30 "
+        "--stream-timeout 180 "
         + shellQuote(input) +
         " 360p -f -o \"$HOME/kodigui/yt.mp4\" "
         ">> \"$HOME/kodigui/streamlink.log\" 2>&1 < /dev/null & "
