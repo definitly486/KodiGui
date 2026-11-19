@@ -297,8 +297,8 @@ MainWindow::MainWindow(QWidget *parent)
         if (auto *pageLayout = qobject_cast<QVBoxLayout *>(youtubePage->layout())) {
             pageLayout->insertLayout(0, youtubeStatusLayout);
         } else {
-            auto *pageLayout = new QVBoxLayout(youtubePage);
-            pageLayout->addLayout(youtubeStatusLayout);
+            auto *newPageLayout = new QVBoxLayout(youtubePage);
+            newPageLayout->addLayout(youtubeStatusLayout);
         }
 
         auto *youtubeStatusTimer = new QTimer(this);
