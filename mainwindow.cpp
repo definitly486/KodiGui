@@ -221,7 +221,7 @@ MainWindow::MainWindow(QWidget *parent)
                 if (file.open(QIODevice::WriteOnly | QIODevice::Truncate |
                               QIODevice::Text)) {
                     file.write(url.toUtf8());
-                    file.write("\\n");
+                    file.write("\n");
                     file.close();
                 } else {
                     qWarning().noquote() << "[Okko MPD] Cannot write:"
