@@ -2591,6 +2591,398 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 }
 
 
+void MainWindow::on_startDrmLegacyDownloadButton_clicked()
+{
+    const QString user = "pi@192.168.8.45";
+    QString input = currentDrmUrl().trimmed();
+    QString keydrm = currentDrmKey().trimmed();
+
+    // Если хотя бы одно поле пустое, пытаемся взять недостающие значения
+    // из ~/Downloads/widevine_key.txt: первая строка — URL, вторая — key.
+    if (input.isEmpty() || keydrm.isEmpty()) {
+        const QString keyFilePath =
+            QDir::homePath() + "/Downloads/widevine_key.txt";
+        QFile keyFile(keyFilePath);
+
+        if (!keyFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, "DRM",
+                                 "Не удалось открыть файл:\n" + keyFilePath);
+            return;
+        }
+
+        QTextStream stream(&keyFile);
+        const QStringList lines = stream.readAll().split(
+            QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
+        keyFile.close();
+
+        if (lines.size() < 2) {
+            QMessageBox::warning(this, "DRM",
+                                 "В файле должны быть две строки:\n"
+                                 "1 — DRM URL\n2 — DRM key");
+            return;
+        }
+
+        if (input.isEmpty()) {
+            input = lines.at(0).trimmed();
+            ui->lineEdit_drm->setText(input);
+        }
+        if (keydrm.isEmpty()) {
+            keydrm = lines.at(1).trimmed();
+            ui->lineEdit_drm_key->setText(keydrm);
+        }
+    }
+
+    if (input.isEmpty() || keydrm.isEmpty()) {
+        QMessageBox::warning(this, "DRM",
+                             "DRM URL или key не заполнены.");
+        return;
+    }
+
+    // Все операции подготовки и запуска выполняются одной SSH-командой.
+    // Это исключает гонку между несколькими независимыми startDetached().
+    auto shellQuote = [](const QString &value) {
+        QString escaped = value;
+        escaped.replace("'", "'\\''");
+        return "'" + escaped + "'";
+    };
+
+    // Dynamic HLS publisher: publishes original decrypted fMP4 fragments without remuxing.
+    const QString assembleScriptBody = QString::fromUtf8(R"DRM_HLS_SCRIPT(
+#!/bin/bash
+set -u
+LOG="$HOME/kodigui/drm-mux.log"
+ts() { date +%H:%M:%S; }
+echo "[$(ts)] Dynamic HLS publisher started" >> "$LOG"
+TASK_ROOT="$HOME/kodigui/drm/tmp/drm"
+V=""; A=""; VI=""; AI=""
+for i in $(seq 1 120); do
+  # N_m3u8DL-RE stores live tracks under <tmp-dir>/<save-name>/<track>.
+  # Discover recursively because track folder names vary between releases.
+  TRACKS=$(python3 - "$TASK_ROOT" <<'PY_TRACK_DISCOVERY'
+import os, pathlib, subprocess, sys
+base = pathlib.Path(sys.argv[1])
+video = audio = ""
+for current, dirs, names in os.walk(base):
+    here = pathlib.Path(current)
+    init = next((here / n for n in ("_init_dec.mp4", "_init.mp4")
+                 if (here / n).is_file()), None)
+    if init is None or not any(n.endswith(".m4s") for n in names):
+        continue
+    label = here.name.lower()
+    kind = ""
+    if any(token in label for token in ("video", "avc1", "h264")):
+        kind = "video"
+    elif any(token in label for token in ("audio", "mp4a", "aac")):
+        kind = "audio"
+    else:
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                 "-of", "csv=p=0", str(init)],
+                capture_output=True, text=True, timeout=5)
+            media = set(probe.stdout.lower().split())
+            if "video" in media:
+                kind = "video"
+            elif "audio" in media:
+                kind = "audio"
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if kind == "video" and not video:
+        video = current
+    elif kind == "audio" and not audio:
+        audio = current
+print(video)
+print(audio)
+PY_TRACK_DISCOVERY
+)
+  V=$(printf '%s\n' "$TRACKS" | sed -n '1p')
+  A=$(printf '%s\n' "$TRACKS" | sed -n '2p')
+  if [ -n "$V" ] && [ -n "$A" ]; then
+    VI=""; AI=""
+    for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
+      if [ -s "$candidate" ]; then VI="$candidate"; break; fi
+    done
+    for candidate in "$A/_init_dec.mp4" "$A/_init.mp4"; do
+      if [ -s "$candidate" ]; then AI="$candidate"; break; fi
+    done
+    if [ -n "$VI" ] && [ -n "$AI" ]; then break; fi
+  fi
+  sleep 1
+done
+if [ -z "$V" ] || [ -z "$A" ] || [ -z "$VI" ] || [ -z "$AI" ]; then
+  echo "[$(ts)] ERROR: live track folders/init segments not found (task_root=$TASK_ROOT video=$V audio=$A)" >> "$LOG"
+  echo "[$(ts)] DRM output tree:" >> "$LOG"
+  find "$HOME/kodigui/drm" -maxdepth 5 -type f 2>/dev/null | head -n 120 >> "$LOG"
+  echo "[$(ts)] Downloader log tail:" >> "$LOG"
+  tail -n 50 "$HOME/kodigui/drm-download.log" 2>/dev/null >> "$LOG"
+  exit 1
+fi
+mkdir -p "$HOME/kodigui/drm/hls"
+echo "[$(ts)] Found video=$V init=$(basename "$VI"); audio=$A init=$(basename "$AI")" >> "$LOG"
+LAST_V=0; LAST_A=0
+while true; do
+  dp=""
+  [ -s "$HOME/kodigui/drm_download.pid" ] && dp=$(cat "$HOME/kodigui/drm_download.pid" 2>/dev/null || true)
+  finished=0
+  if [ -z "$dp" ] || ! kill -0 "$dp" 2>/dev/null; then finished=1; fi
+  python3 - "$V" "$A" "$HOME/kodigui/drm" "$finished" <<'PY_BUILDER'
+import glob, math, os, pathlib, sys, tempfile, time
+vdir, adir, root, finished = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3]), sys.argv[4] == '1'
+out = root / 'hls'
+out.mkdir(parents=True, exist_ok=True)
+
+def files(directory, timescale):
+    # Video and audio are independent HLS renditions. Do not force a
+    # one-to-one match: their fragment boundaries/counts may legitimately differ.
+    result = []
+    for path in glob.glob(os.path.join(directory, '*.m4s')):
+        stem = os.path.splitext(os.path.basename(path))[0]
+        try:
+            ticks = int(stem.split('_', 1)[0])
+        except ValueError:
+            continue
+        result.append((ticks / timescale, path))
+    return sorted(result, key=lambda item: item[0])
+
+def stable(path):
+    try:
+        first = os.stat(path)
+        time.sleep(0.12)
+        second = os.stat(path)
+        return (first.st_size > 0 and first.st_size == second.st_size
+                and first.st_mtime_ns == second.st_mtime_ns)
+    except OSError:
+        return False
+
+def stable_tail(entries):
+    # Never publish the fragment that the downloader is still writing.
+    while len(entries) >= 2 and not stable(entries[-1][1]):
+        entries.pop()
+    return entries
+
+def atomic_write(path, data):
+    fd, tmp = tempfile.mkstemp(prefix=path.name + '.', suffix='.tmp', dir=str(path.parent))
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+
+video_entries = stable_tail(files(vdir, 600))
+audio_entries = stable_tail(files(adir, 48000))
+if len(video_entries) < 2 or len(audio_entries) < 2:
+    sys.exit(0)
+
+# Keep a larger safety margin behind the live edge. Kodi only sees completed
+# fragments; the downloader can finish writing upcoming fragments undisturbed.
+LIVE_HOLD_BACK_SEGMENTS = 5
+LIVE_WINDOW_SEGMENTS = 90
+STARTUP_BUFFER_SEGMENTS = 5
+
+def make_playlist(entries, directory, done):
+    visible_end = len(entries) if done else max(0, len(entries) - LIVE_HOLD_BACK_SEGMENTS)
+    minimum_visible = 2 if done else STARTUP_BUFFER_SEGMENTS
+    if visible_end < minimum_visible:
+        return None
+
+    start = max(0, visible_end - LIVE_WINDOW_SEGMENTS)
+    selected = entries[start:visible_end]
+    init_candidates = [directory / '_init_dec.mp4', directory / '_init.mp4']
+    init_path = next((path for path in init_candidates
+                      if path.is_file() and path.stat().st_size > 0), None)
+    if init_path is None:
+        raise RuntimeError(f'init segment missing in {directory}')
+
+    durations = []
+    for i, (timestamp, _) in enumerate(selected):
+        absolute_index = start + i
+        if absolute_index + 1 < len(entries):
+            duration = entries[absolute_index + 1][0] - timestamp
+        elif len(selected) > 1:
+            duration = selected[-1][0] - selected[-2][0]
+        else:
+            duration = 3.2
+        if not (0.1 <= duration <= 30):
+            duration = 3.2
+        durations.append(duration)
+
+    target = max(1, math.ceil(max(durations)))
+    rel_dir = os.path.relpath(directory, out)
+    lines = [
+        '#EXTM3U',
+        '#EXT-X-VERSION:7',
+        f'#EXT-X-TARGETDURATION:{target}',
+        f'#EXT-X-MEDIA-SEQUENCE:{start}',
+        f'#EXT-X-MAP:URI="{rel_dir}/{init_path.name}"'
+    ]
+    for (_, path), duration in zip(selected, durations):
+        lines.extend([f'#EXTINF:{duration:.3f},',
+                      f'{rel_dir}/{os.path.basename(path)}'])
+    if done:
+        lines.append('#EXT-X-ENDLIST')
+    return '\n'.join(lines) + '\n'
+
+video_playlist = make_playlist(video_entries, pathlib.Path(vdir), finished)
+audio_playlist = make_playlist(audio_entries, pathlib.Path(adir), finished)
+if video_playlist is None or audio_playlist is None:
+    sys.exit(0)
+
+atomic_write(out / 'video.m3u8', video_playlist)
+atomic_write(out / 'audio.m3u8', audio_playlist)
+master = ('#EXTM3U\n#EXT-X-VERSION:7\n'
+          '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="AAC",DEFAULT=YES,AUTOSELECT=YES,URI="audio.m3u8"\n'
+          '#EXT-X-STREAM-INF:BANDWIDTH=700000,CODECS="avc1.4D401E,mp4a.40.2",AUDIO="audio"\nvideo.m3u8\n')
+atomic_write(out / 'master.m3u8', master)
+print(f'published video={len(video_entries)} audio={len(audio_entries)} '
+      f'fragments; holdback={0 if finished else LIVE_HOLD_BACK_SEGMENTS}; '
+      f'finished={finished}')
+PY_BUILDER
+  rc=$?
+  if [ "$rc" -ne 0 ]; then echo "[$(ts)] ERROR: playlist publisher exit=$rc" >> "$LOG"; fi
+  vc=$(find "$V" -maxdepth 1 -name '*.m4s' 2>/dev/null | wc -l)
+  ac=$(find "$A" -maxdepth 1 -name '*.m4s' 2>/dev/null | wc -l)
+  if [ "$vc" -ne "$LAST_V" ] || [ "$ac" -ne "$LAST_A" ]; then
+    echo "[$(ts)] HLS updated: video=$vc audio=$ac" >> "$LOG"; LAST_V=$vc; LAST_A=$ac
+  fi
+  if [ "$finished" -eq 1 ]; then echo "[$(ts)] Downloader finished; final HLS playlist published" >> "$LOG"; break; fi
+  sleep 1
+done
+echo "[$(ts)] HLS publisher finished" >> "$LOG"
+)DRM_HLS_SCRIPT");
+    // Уникальный маркер не позволяет принять плейлист от предыдущего запуска.
+    const QString runId = QString::number(QDateTime::currentMSecsSinceEpoch());
+
+    const QString remoteCmd =
+        // Останавливаем старые процессы, затем только после этого удаляем старые файлы.
+        "mkdir -p \"$HOME/kodigui\"; "
+        "if [ -s \"$HOME/kodigui/drm_mux.pid\" ]; then "
+        "  old_mux=$(cat \"$HOME/kodigui/drm_mux.pid\"); "
+        "  kill -TERM -- -\"$old_mux\" 2>/dev/null || true; "
+        "fi; "
+        "if [ -s \"$HOME/kodigui/drm_download.pid\" ]; then "
+        "  old_dl=$(cat \"$HOME/kodigui/drm_download.pid\"); "
+        "  kill -TERM \"$old_dl\" 2>/dev/null || true; "
+        "fi; "
+        "killall -9 N_m3u8DL-RE 2>/dev/null || true; "
+        "sleep 1; "
+        "rm -f \"$HOME/kodigui/drm_mux.pid\" \"$HOME/kodigui/drm_download.pid\" "
+        "      \"$HOME/kodigui/drm-assemble.sh\"; "
+        "rm -rf \"$HOME/kodigui/drm\"; "
+        "mkdir -p \"$HOME/kodigui/drm/hls\"; "
+        "printf '%s\\n' " + shellQuote(runId) + " > \"$HOME/kodigui/drm/hls/.run-id\"; "
+        ": > \"$HOME/kodigui/drm-download.log\"; "
+        ": > \"$HOME/kodigui/drm-mux.log\"; "
+        // Пишем скрипт сборщика в файл (без проблем с кавычками).
+        "cat > \"$HOME/kodigui/drm-assemble.sh\" << 'ASSEMBLE_EOF'\n" +
+        assembleScriptBody +
+        "ASSEMBLE_EOF\n"
+        "chmod +x \"$HOME/kodigui/drm-assemble.sh\"; "
+        // Загрузчик: расшифрованные сегменты в $HOME/kodigui/drm (без live-pipe-mux).
+        "nohup N_m3u8DL-RE " + shellQuote(input) +
+        " --key " + shellQuote(keydrm) +
+        " -sv worst "
+        "--save-name drm --save-dir \"$HOME/kodigui/drm\" "
+        "--tmp-dir \"$HOME/kodigui/drm/tmp\" "
+        "--mp4-real-time-decryption "
+        "--live-real-time-merge "
+        "--live-keep-segments "
+        "--select-audio id='audio_aar=128000' "
+        "> \"$HOME/kodigui/drm-download.log\" 2>&1 < /dev/null & "
+        "echo $! > \"$HOME/kodigui/drm_download.pid\"; "
+        // Публикатор динамических HLS-плейлистов → drm/hls/master.m3u8
+        "nohup setsid \"$HOME/kodigui/drm-assemble.sh\" "
+        "> \"$HOME/kodigui/drm-mux.log\" 2>&1 < /dev/null & "
+        "echo $! > \"$HOME/kodigui/drm_mux.pid\"";
+
+    runCommand("ssh", {user, remoteCmd});
+
+    // Проверяем появление непустого drm.mp4 и состояние группы сборщика.
+    if (drmFileCheckTimer)
+        drmFileCheckTimer->stop();
+    if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning)
+        drmFileCheckProcess->kill();
+
+    if (!drmFileCheckProcess) {
+        drmFileCheckProcess = new QProcess(this);
+        connect(drmFileCheckProcess,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [this](int exitCode, QProcess::ExitStatus) {
+            const QString output =
+                QString::fromUtf8(drmFileCheckProcess->readAllStandardOutput());
+            if (!output.isEmpty())
+                qInfo().noquote() << "[DRM remote check]" << output.trimmed();
+            qInfo() << "DRM remote check finished; exitCode=" << exitCode;
+
+            if (exitCode == 0 && output.contains("DRM_HLS_READY")) {
+                if (drmFileCheckTimer)
+                    drmFileCheckTimer->stop();
+                QMessageBox::information(this, "DRM",
+                    "Новый динамический HLS-плейлист опубликован.\n"
+                    "Нажмите Play — Kodi откроет поток один раз\n"
+                    "и будет получать новые сегменты по мере загрузки.");
+            } else if (output.contains("DRM_MUX_FAILED")) {
+                if (drmFileCheckTimer)
+                    drmFileCheckTimer->stop();
+                QMessageBox::warning(this, "DRM",
+                    "Публикатор HLS завершился до создания плейлиста.\n\n"
+                    "Последние строки журнала:\n" + output);
+            }
+        });
+    }
+
+    if (!drmFileCheckTimer) {
+        drmFileCheckTimer = new QTimer(this);
+        drmFileCheckTimer->setInterval(1500);
+        connect(drmFileCheckTimer, &QTimer::timeout, this, [this, runId, shellQuote]() {
+            if (drmFileCheckProcess->state() != QProcess::NotRunning)
+                return;
+
+            // Ограничиваем ожидание, чтобы при ошибке SSH/загрузчика не проверять бесконечно.
+            if (++drmFileCheckAttempts > 80) {
+                drmFileCheckTimer->stop();
+                QMessageBox::warning(this, "DRM",
+                    "За ~2 минуты HLS-плейлист не появился.\n"
+                    "Проверьте $HOME/kodigui/drm-download.log и $HOME/kodigui/drm-mux.log на Raspberry Pi.");
+                return;
+            }
+
+            {
+                qInfo() << "Checking remote DRM output and assembler status";
+                drmFileCheckProcess->start("ssh", {
+                    "pi@192.168.8.45",
+                    "if [ -s \"$HOME/kodigui/drm/hls/.run-id\" ] && "
+                    "   [ \"$(cat \"$HOME/kodigui/drm/hls/.run-id\" 2>/dev/null)\" = " + shellQuote(runId) + " ]; then "
+                    "  if [ -s \"$HOME/kodigui/drm/hls/master.m3u8\" ] && "
+                    "     [ -s \"$HOME/kodigui/drm/hls/video.m3u8\" ] && "
+                    "     [ -s \"$HOME/kodigui/drm/hls/audio.m3u8\" ] && "
+                    "     grep -q \"#EXTINF:\" \"$HOME/kodigui/drm/hls/video.m3u8\" && "
+                    "     grep -q \"#EXTINF:\" \"$HOME/kodigui/drm/hls/audio.m3u8\"; then "
+                    "    echo DRM_HLS_READY; "
+                    "  elif [ -s \"$HOME/kodigui/drm_mux.pid\" ]; then "
+                    "    p=$(cat \"$HOME/kodigui/drm_mux.pid\"); "
+                    "    if ! kill -0 -- -\"$p\" 2>/dev/null; then "
+                    "      echo DRM_MUX_FAILED; "
+                    "      tail -n 25 $HOME/kodigui/drm-mux.log; "
+                    "    fi; "
+                    "  fi; "
+                    "fi"
+                });
+            }
+        });
+    }
+    drmFileCheckAttempts = 0;
+    drmFileCheckTimer->start();
+
+    qDebug() << "DRM: N_m3u8DL-RE + dynamic HLS publisher started";
+}
+
+
 QString MainWindow::currentDrmUrl()
 {
     QString input = ui->lineEdit_drm->text();
