@@ -2353,7 +2353,7 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
         "--mp4-real-time-decryption "
         "--live-real-time-merge "
         "--live-keep-segments "
-        "--select-audio id='audio_aar=128000' "
+        "--select-audio 'lang=rus:for=best' "
         "> \"$HOME/kodigui/drm-download.log\" 2>&1 < /dev/null & "
         "echo $! > \"$HOME/kodigui/drm_download.pid\"; "
         // Публикатор динамических HLS-плейлистов → drm/hls/master.m3u8
