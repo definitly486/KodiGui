@@ -2375,7 +2375,7 @@ atomic_write(out / 'video.m3u8', video_playlist)
 atomic_write(out / 'audio.m3u8', audio_playlist)
 master = ('#EXTM3U\n#EXT-X-VERSION:7\n'
           '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="AAC",DEFAULT=YES,AUTOSELECT=YES,URI="audio.m3u8"\n'
-          '#EXT-X-STREAM-INF:BANDWIDTH=700000,CODECS="avc1.4D401E,mp4a.40.2",AUDIO="audio"\nvideo.m3u8\n')
+          '#EXT-X-STREAM-INF:BANDWIDTH=700000,CODECS="avc1.640015,mp4a.40.2",AUDIO="audio"\nvideo.m3u8\n')
 atomic_write(out / 'master.m3u8', master)
 print(f'published video={len(video_entries)} audio={len(audio_entries)} '
       f'fragments; holdback={0 if finished else LIVE_HOLD_BACK_SEGMENTS}; '
