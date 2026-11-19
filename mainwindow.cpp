@@ -316,11 +316,11 @@ MainWindow::MainWindow(QWidget *parent)
     // Keep tab captions intact. Give tabs enough minimum width for readable
     // labels; when the complete row does not fit, Qt scrolls the tab bar.
     ui->tabWidget->setElideMode(Qt::ElideNone);
-    ui->tabWidget->setUsesScrollButtons(true);
+    ui->tabWidget->setUsesScrollButtons(false);
     if (QTabBar *tabBar = ui->tabWidget->tabBar()) {
         tabBar->setElideMode(Qt::ElideNone);
-        tabBar->setExpanding(false);
-        tabBar->setUsesScrollButtons(true);
+        tabBar->setExpanding(true);
+        tabBar->setUsesScrollButtons(false);
         tabBar->setMinimumHeight(tabBar->sizeHint().height());
     }
 
@@ -404,7 +404,7 @@ MainWindow::MainWindow(QWidget *parent)
                 }
                 QTabBar::tab {
                     padding: 4px 5px; margin: 1px 1px 0 0;
-                    min-width: 100px; font-size: 8pt;
+                    min-width: 0px; font-size: 7pt;
                 }
                 QTabBar::tab:selected {
                     background: #ffffff; color: #087f8c;
@@ -481,7 +481,7 @@ MainWindow::MainWindow(QWidget *parent)
                     padding: 4px 5px; margin: 1px 1px 0 0;
                     border-top-left-radius: 6px;
                     border-top-right-radius: 6px;
-                    min-width: 100px; font-size: 8pt;
+                    min-width: 0px; font-size: 7pt;
                 }
                 QTabBar::tab:selected {
                     background: rgba(133, 87, 37, 238);
@@ -568,7 +568,7 @@ MainWindow::MainWindow(QWidget *parent)
                 }
                 QTabBar::tab {
                     padding: 4px 5px; margin: 1px 1px 0 0;
-                    min-width: 100px; font-size: 8pt;
+                    min-width: 0px; font-size: 7pt;
                 }
                 QTabBar::tab:selected { background: #1d2532; color: #55d6c2; border-color: #3b9e98; font-weight: 600; }
                 QTabBar::tab:hover:!selected { background: #2b394b; color: #ffffff; }
@@ -665,7 +665,7 @@ MainWindow::MainWindow(QWidget *parent)
     QTabBar *tabs = ui->tabWidget->tabBar();
     tabs->setUsesScrollButtons(false);
     tabs->setExpanding(true);
-    tabs->setElideMode(Qt::ElideRight);
+    tabs->setElideMode(Qt::ElideNone);
     tabs->setIconSize(QSize(14, 14));
 
     // Отдельная вкладка настроек внешнего вида.

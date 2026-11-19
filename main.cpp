@@ -36,6 +36,7 @@ int main(int argc, char *argv[])
     QString chromiumFlags = QStringLiteral(
         "--disable-gpu "
         "--disable-gpu-compositing "
+        "--disable-software-rasterizer "
         "--disable-features=UseOzonePlatform");
 
     // Qt WebEngine loads an external Widevine CDM using --widevine-path.
