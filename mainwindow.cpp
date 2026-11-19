@@ -2441,7 +2441,8 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
         "--save-name drm --save-dir \"$HOME/kodigui/drm\" "
         "--tmp-dir \"$HOME/kodigui/drm/tmp\" "
         "--mp4-real-time-decryption "
-        "--live-real-time-merge "
+        // Keep decrypted live fragments available for the HLS publisher.
+        // Real-time merging can consume/remove one track before the other is ready.
         "--live-keep-segments "
         "--select-audio 'lang=rus:for=best' "
         "> \"$HOME/kodigui/drm-download.log\" 2>&1 < /dev/null & "
