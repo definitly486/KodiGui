@@ -78,11 +78,12 @@ void runCommand(const QString &command, const QStringList &args = {});
 namespace {
 class OkkoMpdUrlInterceptor final : public QWebEngineUrlRequestInterceptor
 {
-    Q_OBJECT
-
 public:
-    explicit OkkoMpdUrlInterceptor(QObject *parent = nullptr)
-        : QWebEngineUrlRequestInterceptor(parent)
+    OkkoMpdUrlInterceptor(QObject *context,
+                          std::function<void(const QString &)> callback)
+        : QWebEngineUrlRequestInterceptor(context)
+        , m_context(context)
+        , m_callback(std::move(callback))
     {
     }
 
@@ -90,14 +91,24 @@ public:
     {
         const QUrl requestUrl = info.requestUrl();
         const QString scheme = requestUrl.scheme();
-        if ((scheme == QStringLiteral("http") || scheme == QStringLiteral("https")) &&
-            requestUrl.path().contains(QStringLiteral(".mpd"), Qt::CaseInsensitive)) {
-            emit mpdUrlFound(requestUrl.toString());
+        if ((scheme != QStringLiteral("http") && scheme != QStringLiteral("https")) ||
+            !requestUrl.path().contains(QStringLiteral(".mpd"), Qt::CaseInsensitive))
+            return;
+
+        const QString url = requestUrl.toString();
+        QObject *context = m_context;
+        const auto callback = m_callback;
+        if (context) {
+            QMetaObject::invokeMethod(context, [callback, url]() {
+                if (callback)
+                    callback(url);
+            }, Qt::QueuedConnection);
         }
     }
 
-signals:
-    void mpdUrlFound(const QString &url);
+private:
+    QObject *m_context;
+    std::function<void(const QString &)> m_callback;
 };
 
 QPointer<QTextEdit> debugOutput;
@@ -177,12 +188,6 @@ MainWindow::MainWindow(QWidget *parent)
     okkoProfile->setCachePath(cachePath);
     okkoProfile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
 
-    // Capture DASH manifests requested by the Okko WebEngine profile.
-    // The interceptor runs outside the GUI thread; the signal is delivered
-    // to MainWindow through Qt's queued connection.
-    auto *okkoMpdInterceptor = new OkkoMpdUrlInterceptor(okkoProfile);
-    okkoProfile->setUrlRequestInterceptor(okkoMpdInterceptor);
-
     // Встроенная вкладка Okko работает внутри Qt WebEngine.
     auto *okkoContainer = new QWidget(ui->tabWidget);
     auto *okkoLayout = new QVBoxLayout(okkoContainer);
@@ -221,13 +226,15 @@ MainWindow::MainWindow(QWidget *parent)
     mpdToolbarLayout->addWidget(copyMpdUrlButton);
     okkoLayout->addWidget(mpdToolbar);
 
-    connect(okkoMpdInterceptor, &OkkoMpdUrlInterceptor::mpdUrlFound,
-            this, [mpdUrlEdit](const QString &url) {
-        if (mpdUrlEdit->text() == url)
-            return;
-        mpdUrlEdit->setText(url);
-        qInfo().noquote() << "[Okko MPD] DASH manifest captured:" << url;
-    });
+    // Capture DASH manifests from Okko requests and update the UI on its thread.
+    auto *okkoMpdInterceptor = new OkkoMpdUrlInterceptor(
+        this, [mpdUrlEdit](const QString &url) {
+            if (mpdUrlEdit->text() == url)
+                return;
+            mpdUrlEdit->setText(url);
+            qInfo().noquote() << "[Okko MPD] DASH manifest captured:" << url;
+        });
+    okkoProfile->setUrlRequestInterceptor(okkoMpdInterceptor);
     connect(copyMpdUrlButton, &QPushButton::clicked, this, [this, mpdUrlEdit]() {
         const QString url = mpdUrlEdit->text().trimmed();
         if (url.isEmpty()) {
