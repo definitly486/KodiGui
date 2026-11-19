@@ -28,6 +28,9 @@
 #include <QMetaObject>
 #include <QTextEdit>
 #include <QScrollBar>
+#include <QSocketNotifier>
+#include <fcntl.h>
+#include <unistd.h>
 #include <QCheckBox>
 #include <QStyle>
 #include <QIcon>
@@ -234,6 +237,80 @@ MainWindow::MainWindow(QWidget *parent)
     okkoView->settings()->setAttribute(QWebEngineSettings::PlaybackRequiresUserGesture, false);
     okkoView->setPage(new QWebEnginePage(okkoProfile, okkoView));
     okkoLayout->addWidget(okkoView, 1);
+
+    // OpenWV/Rust diagnostic output is shown directly in the Okko tab.
+    auto *drmLogHeader = new QWidget(okkoContainer);
+    auto *drmLogHeaderLayout = new QHBoxLayout(drmLogHeader);
+    drmLogHeaderLayout->setContentsMargins(6, 2, 6, 0);
+    auto *drmLogTitle = new QLabel(QStringLiteral("Диагностика OpenWV"), drmLogHeader);
+    auto *clearDrmLogButton = new QPushButton(QStringLiteral("Очистить"), drmLogHeader);
+    drmLogHeaderLayout->addWidget(drmLogTitle);
+    drmLogHeaderLayout->addStretch(1);
+    drmLogHeaderLayout->addWidget(clearDrmLogButton);
+    okkoLayout->addWidget(drmLogHeader);
+
+    auto *okkoDrmLog = new QTextEdit(okkoContainer);
+    okkoDrmLog->setObjectName(QStringLiteral("okkoDrmLog"));
+    okkoDrmLog->setReadOnly(true);
+    okkoDrmLog->setMaximumHeight(150);
+    okkoDrmLog->document()->setMaximumBlockCount(5000);
+    okkoDrmLog->setPlaceholderText(
+        QStringLiteral("Здесь появятся диагностические сообщения OpenWV…"));
+    okkoLayout->addWidget(okkoDrmLog);
+    connect(clearDrmLogButton, &QPushButton::clicked,
+            okkoDrmLog, &QTextEdit::clear);
+
+    // main.cpp redirects stdout/stderr to a non-blocking pipe. Consume it on
+    // the GUI thread; suppress lines that contain actual DRM key material.
+    bool okkoLogFdOk = false;
+    const int okkoLogFd = qEnvironmentVariableIntValue(
+        "KODIGUI_LOG_READ_FD", &okkoLogFdOk);
+    if (okkoLogFdOk && okkoLogFd >= 0) {
+        auto *logNotifier = new QSocketNotifier(
+            okkoLogFd, QSocketNotifier::Read, this);
+        connect(logNotifier, &QSocketNotifier::activated, this,
+                [okkoDrmLog, okkoLogFd]() {
+            char buffer[8192];
+            QByteArray incoming;
+            for (;;) {
+                const ssize_t count = ::read(okkoLogFd, buffer, sizeof(buffer));
+                if (count > 0) {
+                    incoming.append(buffer, static_cast<qsizetype>(count));
+                    continue;
+                }
+                break;
+            }
+            if (incoming.isEmpty())
+                return;
+
+            static QByteArray pending;
+            pending.append(incoming);
+            for (;;) {
+                const qsizetype newline = pending.indexOf('\n');
+                if (newline < 0)
+                    break;
+                const QString line = QString::fromUtf8(pending.left(newline)).trimmed();
+                pending.remove(0, newline + 1);
+                if (line.isEmpty())
+                    continue;
+                if (line.contains(QStringLiteral("Loaded key:"),
+                                  Qt::CaseInsensitive) ||
+                    line.contains(QStringLiteral("decryption key:"),
+                                  Qt::CaseInsensitive)) {
+                    okkoDrmLog->append(
+                        QStringLiteral("[OpenWV] DRM key output suppressed"));
+                    continue;
+                }
+                okkoDrmLog->append(line.toHtmlEscaped());
+                if (auto *bar = okkoDrmLog->verticalScrollBar())
+                    bar->setValue(bar->maximum());
+            }
+        });
+    } else {
+        okkoDrmLog->append(
+            QStringLiteral("Перехват stdout/stderr не активирован."));
+    }
+
     ui->tabWidget->addTab(okkoContainer, QStringLiteral("okko.tv"));
 
     // Keep tab captions intact. Give tabs enough minimum width for readable
