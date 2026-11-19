@@ -234,13 +234,10 @@ MainWindow::MainWindow(QWidget *parent)
         drmProcessStatusProcess->start(QStringLiteral("ssh"), {
             QStringLiteral("pi@192.168.8.45"),
             QStringLiteral("for name in yt-dlp streamlink ffmpeg; do "
-                           "if pgrep -af \"[y]t-dlp\" >/dev/null 2>&1 && [ \"$name\" = yt-dlp ]; then "
-                           "echo yt-dlp=1; "
-                           "elif pgrep -af \"[s]treamlink\" >/dev/null 2>&1 && [ \"$name\" = streamlink ]; then "
-                           "echo streamlink=1; "
-                           "elif pgrep -af \"[f]fmpeg\" >/dev/null 2>&1 && [ \"$name\" = ffmpeg ]; then "
-                           "echo ffmpeg=1; "
-                           "else echo \"$name=0\"; fi; done")
+                           "if ps -eo pid=,comm=,args= | awk -v n=\\\"$name\\\" "
+                           "'$2 !~ /^(sh|bash|dash|awk|grep|ssh)$/ && index($0,n)>0 "
+                           "{found=1} END {exit !found}'; then "
+                           "echo \"$name=1\"; else echo \"$name=0\"; fi; done")
         });
     };
     connect(drmProcessStatusTimer, &QTimer::timeout, this, checkDrmProcesses);
