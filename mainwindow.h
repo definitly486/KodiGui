@@ -10,7 +10,11 @@
 #include <QNetworkRequest>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QPoint>
+#include <QEvent>
 
+
+class QWebEngineProfile;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -110,14 +114,20 @@ private slots:
 
     void on_debugClearButton_clicked();
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
    private:
  Ui::MainWindow *ui;
+ QWebEngineProfile *okkoProfile = nullptr;
  QProcess *pythonProcess;        // ← вот это
  QProcess *kodidlpProcess;
  QTimer *drmFileCheckTimer = nullptr;
  QProcess *drmFileCheckProcess = nullptr;
  int drmFileCheckAttempts = 0;
    QNetworkAccessManager *manager;
+   QPoint mousePadPressPos;
+   bool mousePadPressed = false;
     int rpcId = 1;
 
     void sendJsonRpc(

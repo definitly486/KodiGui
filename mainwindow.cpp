@@ -28,6 +28,9 @@
 #include <QMetaObject>
 #include <QTextEdit>
 #include <QScrollBar>
+#include <QSocketNotifier>
+#include <fcntl.h>
+#include <unistd.h>
 #include <QCheckBox>
 #include <QStyle>
 #include <QIcon>
@@ -35,19 +38,23 @@
 #include <QSettings>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QPushButton>
+#include <QLabel>
+#include <QFont>
+#include <QWidget>
+#include <QMouseEvent>
+#include <QWheelEvent>
 #include <QWebEngineView>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
+#include <QWebEngineCertificateError>
 #include <QWebEngineSettings>
 #include <QWebEngineUrlRequestInterceptor>
 #include <QApplication>
 #include <QClipboard>
-#include <QStandardPaths>
 #include <utility>
-#include <QLabel>
-#include <QFont>
-#include <QWidget>
+#include <QPushButton>
+#include <QStandardPaths>
+#include <QEvent>
 #include <QTabBar>
 #include <QList>
 #include <QHash>
@@ -156,24 +163,30 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    // Вкладка Okko с перехватом URL DASH-манифеста.
+    // Persistent Okko profile stored locally on the machine running KodiGui.
+    // Do not use a remote/server path: Qt WebEngine and its extensions run in this
+    // process and need a writable local profile directory.
     QString okkoDataPath = QStandardPaths::writableLocation(
         QStandardPaths::AppDataLocation);
     if (okkoDataPath.isEmpty())
         okkoDataPath = QDir::home().filePath(QStringLiteral(".local/share/KodiGui"));
-    const QString okkoStoragePath =
-        QDir(okkoDataPath).filePath(QStringLiteral("okko-profile/storage"));
-    const QString okkoCachePath =
-        QDir(okkoDataPath).filePath(QStringLiteral("okko-profile/cache"));
-    if (!QDir().mkpath(okkoStoragePath) || !QDir().mkpath(okkoCachePath))
-        qWarning().noquote() << "[Okko] Cannot create profile directories:"
-                             << okkoStoragePath << okkoCachePath;
+    okkoDataPath = QDir(okkoDataPath).filePath(QStringLiteral("okko-profile"));
 
-    auto *okkoProfile = new QWebEngineProfile(QStringLiteral("KodiGuiOkko"), this);
-    okkoProfile->setPersistentStoragePath(okkoStoragePath);
-    okkoProfile->setCachePath(okkoCachePath);
+    const QString storagePath =
+        QDir(okkoDataPath).filePath(QStringLiteral("storage"));
+    const QString cachePath =
+        QDir(okkoDataPath).filePath(QStringLiteral("cache"));
+    if (!QDir().mkpath(storagePath) || !QDir().mkpath(cachePath)) {
+        qCritical().noquote() << "[Okko extensions] Cannot create profile directories:"
+                              << storagePath << cachePath;
+    }
+
+    okkoProfile = new QWebEngineProfile(QStringLiteral("KodiGuiOkko"), this);
+    okkoProfile->setPersistentStoragePath(storagePath);
+    okkoProfile->setCachePath(cachePath);
     okkoProfile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
 
+    // Встроенная вкладка Okko работает внутри Qt WebEngine.
     auto *okkoContainer = new QWidget(ui->tabWidget);
     auto *okkoLayout = new QVBoxLayout(okkoContainer);
     okkoLayout->setContentsMargins(0, 0, 0, 0);
@@ -181,7 +194,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *mpdToolbar = new QWidget(okkoContainer);
     auto *mpdToolbarLayout = new QHBoxLayout(mpdToolbar);
-    mpdToolbarLayout->setContentsMargins(6, 4, 6, 2);
+    mpdToolbarLayout->setContentsMargins(6, 0, 6, 4);
     auto *mpdUrlLabel = new QLabel(QStringLiteral("MPD:"), mpdToolbar);
     auto *mpdUrlEdit = new QLineEdit(mpdToolbar);
     mpdUrlEdit->setObjectName(QStringLiteral("okkoMpdUrlEdit"));
@@ -196,6 +209,7 @@ MainWindow::MainWindow(QWidget *parent)
     mpdToolbarLayout->addWidget(copyMpdUrlButton);
     okkoLayout->addWidget(mpdToolbar);
 
+    // Capture DASH manifests from Okko requests and update the UI on its thread.
     auto *okkoMpdInterceptor = new OkkoMpdUrlInterceptor(
         okkoProfile, this, [mpdUrlEdit](const QString &url) {
             if (mpdUrlEdit->text() == url)
@@ -204,7 +218,6 @@ MainWindow::MainWindow(QWidget *parent)
             qInfo().noquote() << "[Okko MPD] DASH manifest captured:" << url;
         });
     okkoProfile->setUrlRequestInterceptor(okkoMpdInterceptor);
-
     connect(copyMpdUrlButton, &QPushButton::clicked, this, [this, mpdUrlEdit]() {
         const QString url = mpdUrlEdit->text().trimmed();
         if (url.isEmpty()) {
@@ -224,8 +237,142 @@ MainWindow::MainWindow(QWidget *parent)
     okkoView->settings()->setAttribute(QWebEngineSettings::PlaybackRequiresUserGesture, false);
     okkoView->setPage(new QWebEnginePage(okkoProfile, okkoView));
     okkoLayout->addWidget(okkoView, 1);
+
+    // OpenWV/Rust diagnostic output is shown directly in the Okko tab.
+    auto *drmLogHeader = new QWidget(okkoContainer);
+    auto *drmLogHeaderLayout = new QHBoxLayout(drmLogHeader);
+    drmLogHeaderLayout->setContentsMargins(6, 2, 6, 0);
+    auto *drmLogTitle = new QLabel(QStringLiteral("Диагностика OpenWV"), drmLogHeader);
+    auto *clearDrmLogButton = new QPushButton(QStringLiteral("Очистить"), drmLogHeader);
+    drmLogHeaderLayout->addWidget(drmLogTitle);
+    drmLogHeaderLayout->addStretch(1);
+    drmLogHeaderLayout->addWidget(clearDrmLogButton);
+    okkoLayout->addWidget(drmLogHeader);
+
+    auto *okkoDrmLog = new QTextEdit(okkoContainer);
+    okkoDrmLog->setObjectName(QStringLiteral("okkoDrmLog"));
+    okkoDrmLog->setReadOnly(true);
+    okkoDrmLog->setMaximumHeight(150);
+    okkoDrmLog->document()->setMaximumBlockCount(5000);
+    okkoDrmLog->setPlaceholderText(
+        QStringLiteral("Здесь появятся диагностические сообщения OpenWV…"));
+    okkoLayout->addWidget(okkoDrmLog);
+    connect(clearDrmLogButton, &QPushButton::clicked,
+            okkoDrmLog, &QTextEdit::clear);
+
+    // main.cpp redirects stdout/stderr to a non-blocking pipe. Consume it on
+    // the GUI thread; suppress lines that contain actual DRM key material.
+    bool okkoLogFdOk = false;
+    const int okkoLogFd = qEnvironmentVariableIntValue(
+        "KODIGUI_LOG_READ_FD", &okkoLogFdOk);
+    if (okkoLogFdOk && okkoLogFd >= 0) {
+        auto *logNotifier = new QSocketNotifier(
+            okkoLogFd, QSocketNotifier::Read, this);
+        connect(logNotifier, &QSocketNotifier::activated, this,
+                [okkoDrmLog, okkoLogFd]() {
+            char buffer[8192];
+            QByteArray incoming;
+            for (;;) {
+                const ssize_t count = ::read(okkoLogFd, buffer, sizeof(buffer));
+                if (count > 0) {
+                    incoming.append(buffer, static_cast<qsizetype>(count));
+                    continue;
+                }
+                break;
+            }
+            if (incoming.isEmpty())
+                return;
+
+            static QByteArray pending;
+            pending.append(incoming);
+            for (;;) {
+                const qsizetype newline = pending.indexOf('\n');
+                if (newline < 0)
+                    break;
+                const QString line = QString::fromUtf8(pending.left(newline)).trimmed();
+                pending.remove(0, newline + 1);
+                if (line.isEmpty())
+                    continue;
+                if (line.contains(QStringLiteral("Loaded key:"),
+                                  Qt::CaseInsensitive) ||
+                    line.contains(QStringLiteral("decryption key:"),
+                                  Qt::CaseInsensitive)) {
+                    okkoDrmLog->append(
+                        QStringLiteral("[OpenWV] DRM key output suppressed"));
+                    continue;
+                }
+                okkoDrmLog->append(line.toHtmlEscaped());
+                if (auto *bar = okkoDrmLog->verticalScrollBar())
+                    bar->setValue(bar->maximum());
+            }
+        });
+    } else {
+        okkoDrmLog->append(
+            QStringLiteral("Перехват stdout/stderr не активирован."));
+    }
+
     ui->tabWidget->addTab(okkoContainer, QStringLiteral("okko.tv"));
+
+    // Keep tab captions intact. Give tabs enough minimum width for readable
+    // labels; when the complete row does not fit, Qt scrolls the tab bar.
+    ui->tabWidget->setElideMode(Qt::ElideNone);
+    ui->tabWidget->setUsesScrollButtons(false);
+    if (QTabBar *tabBar = ui->tabWidget->tabBar()) {
+        tabBar->setElideMode(Qt::ElideNone);
+        tabBar->setExpanding(true);
+        tabBar->setUsesScrollButtons(false);
+        tabBar->setMinimumHeight(tabBar->sizeHint().height());
+    }
+
+    // Диагностика загрузки Okko. Ошибки сертификатов только журналируем
+    // и оставляем отклонёнными: проверку TLS намеренно не отключаем.
+    connect(okkoView, &QWebEngineView::loadStarted, this, []() {
+        qInfo() << "[Okko] page load started";
+    });
+    connect(okkoView, &QWebEngineView::loadProgress, this, [](int progress) {
+        qInfo() << "[Okko] load progress:" << progress << "%";
+    });
+    connect(okkoView, &QWebEngineView::loadFinished, this, [okkoView](bool ok) {
+        qInfo() << "[Okko] load finished:" << ok
+                << "URL:" << okkoView->url().toString()
+                << "title:" << okkoView->title();
+    });
+    connect(okkoView->page(), &QWebEnginePage::certificateError, this,
+            [](const QWebEngineCertificateError &error) {
+        qWarning().noquote() << "[Okko] TLS certificate error:"
+                            << error.description()
+                            << "| URL:" << error.url().toString()
+                            << "| type:" << static_cast<int>(error.type())
+                            << "| overridable:" << error.isOverridable();
+        // Не вызываем acceptCertificate(): недоверенный сертификат блокируется.
+    });
+    connect(okkoView->page(), &QWebEnginePage::renderProcessTerminated, this,
+            [](QWebEnginePage::RenderProcessTerminationStatus status, int exitCode) {
+        qWarning() << "[Okko] renderer terminated; status:"
+                   << static_cast<int>(status) << "exit code:" << exitCode;
+    });
     okkoView->setUrl(QUrl(QStringLiteral("https://okko.tv")));
+
+    // Сенсорная панель управляет навигацией Kodi через JSON-RPC.
+    ui->mousePadWidget->setMouseTracking(true);
+    ui->mousePadHintLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    ui->mousePadWidget->installEventFilter(this);
+    connect(ui->mouseBackButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("back")); });
+    connect(ui->mouseContextButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("contextmenu")); });
+    connect(ui->mouseHomeButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("home")); });
+    connect(ui->mouseUpButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("up")); });
+    connect(ui->mouseDownButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("down")); });
+    connect(ui->mouseLeftButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("left")); });
+    connect(ui->mouseRightButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("right")); });
+    connect(ui->mouseSelectButton, &QPushButton::clicked, this,
+            [this]() { postInputAction(QStringLiteral("select")); });
 
     // Кнопки с тематическими иконками: в классической теме они отключаются.
     QList<QPushButton *> themedButtons;
@@ -514,14 +661,11 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tabWidget->setTabIcon(8, style()->standardIcon(QStyle::SP_MessageBoxInformation));
     ui->tabWidget->setTabIcon(9, style()->standardIcon(QStyle::SP_MessageBoxWarning));
 
-    // Убираем стрелки прокрутки: вкладки распределяются по доступной ширине окна.
-    ui->tabWidget->setElideMode(Qt::ElideNone);
-    ui->tabWidget->setUsesScrollButtons(false);
+    // Компактная панель: все разделы помещаются в одну строку без стрелок прокрутки.
     QTabBar *tabs = ui->tabWidget->tabBar();
-    tabs->setElideMode(Qt::ElideNone);
-    tabs->setExpanding(true);
     tabs->setUsesScrollButtons(false);
-    tabs->setMinimumHeight(tabs->sizeHint().height());
+    tabs->setExpanding(true);
+    tabs->setElideMode(Qt::ElideNone);
     tabs->setIconSize(QSize(14, 14));
 
     // Отдельная вкладка настроек внешнего вида.
@@ -596,7 +740,8 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     debugOutput = ui->debugTextEdit;
-    ui->debugTextEdit->document()->setMaximumBlockCount(15000);    connect(ui->debugEnableCheckBox, &QCheckBox::toggled, this, [](bool enabled) {
+    ui->debugTextEdit->document()->setMaximumBlockCount(15000);
+    connect(ui->debugEnableCheckBox, &QCheckBox::toggled, this, [](bool enabled) {
         if (enabled) {
             debugOutputEnabled.store(true, std::memory_order_relaxed);
             qInfo() << "Debug output enabled";
@@ -670,6 +815,56 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
 
+}
+
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched != ui->mousePadWidget)
+        return QMainWindow::eventFilter(watched, event);
+
+    if (event->type() == QEvent::MouseButtonPress) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton) {
+            mousePadPressPos = mouseEvent->pos();
+            mousePadPressed = true;
+            ui->mousePadStatusLabel->setText(QStringLiteral("Панель активна — перемещайте палец или мышь"));
+            return true;
+        }
+        if (mouseEvent->button() == Qt::RightButton) {
+            postInputAction(QStringLiteral("back"));
+            return true;
+        }
+    } else if (event->type() == QEvent::MouseButtonRelease) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton && mousePadPressed) {
+            mousePadPressed = false;
+            const QPoint delta = mouseEvent->pos() - mousePadPressPos;
+            if (delta.manhattanLength() < 24) {
+                postInputAction(QStringLiteral("select"));
+                ui->mousePadStatusLabel->setText(QStringLiteral("Выбор элемента"));
+            } else if (qAbs(delta.x()) >= qAbs(delta.y())) {
+                postInputAction(delta.x() > 0 ? QStringLiteral("right") : QStringLiteral("left"));
+                ui->mousePadStatusLabel->setText(delta.x() > 0
+                    ? QStringLiteral("Вправо") : QStringLiteral("Влево"));
+            } else {
+                postInputAction(delta.y() > 0 ? QStringLiteral("down") : QStringLiteral("up"));
+                ui->mousePadStatusLabel->setText(delta.y() > 0
+                    ? QStringLiteral("Вниз") : QStringLiteral("Вверх"));
+            }
+            return true;
+        }
+    } else if (event->type() == QEvent::Wheel) {
+        auto *wheelEvent = static_cast<QWheelEvent *>(event);
+        if (wheelEvent->angleDelta().y() != 0) {
+            postInputAction(wheelEvent->angleDelta().y() > 0
+                ? QStringLiteral("up") : QStringLiteral("down"));
+            ui->mousePadStatusLabel->setText(wheelEvent->angleDelta().y() > 0
+                ? QStringLiteral("Прокрутка вверх") : QStringLiteral("Прокрутка вниз"));
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 MainWindow::~MainWindow()
@@ -1195,7 +1390,8 @@ void MainWindow::on_playIptvUrlButton_clicked()
 
                     // Ждём появления каналов
                     auto waitForChannels = std::make_shared<std::function<void(int)>>();
-                    *waitForChannels = [safeThis, waitForChannels](int attemptsLeft){                        if(!safeThis) return;
+                    *waitForChannels = [safeThis, waitForChannels](int attemptsLeft){
+                        if(!safeThis) return;
                         QJsonObject getGroups;
                         getGroups["jsonrpc"]="2.0";
                         getGroups["method"]="PVR.GetChannelGroups";
@@ -1794,7 +1990,8 @@ void MainWindow::on_startDrmDownloadButton_clicked()
         }
 
         QTextStream stream(&keyFile);
-        const QStringList lines = stream.readAll().split(            QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
+        const QStringList lines = stream.readAll().split(
+            QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
         keyFile.close();
 
         if (lines.size() < 2) {
@@ -1835,22 +2032,69 @@ set -u
 LOG="$HOME/kodigui/drm-mux.log"
 ts() { date +%H:%M:%S; }
 echo "[$(ts)] Dynamic HLS publisher started" >> "$LOG"
-V=""; A=""
-for i in $(seq 1 90); do
-  V=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d -name '*avc1*' 2>/dev/null | head -n 1)
-  A=$(find "$HOME/kodigui/drm" -mindepth 1 -maxdepth 1 -type d \( -name '*audio*' -o -name '*mp4a*' \) 2>/dev/null | head -n 1)
-  VI=""; AI=""
-  for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
-    if [ -n "$V" ] && [ -s "$candidate" ]; then VI="$candidate"; break; fi
-  done
-  for candidate in "$A/_init_dec.mp4" "$A/_init.mp4"; do
-    if [ -n "$A" ] && [ -s "$candidate" ]; then AI="$candidate"; break; fi
-  done
-  if [ -n "$VI" ] && [ -n "$AI" ]; then break; fi
+TASK_ROOT="$HOME/kodigui/drm/tmp/drm"
+V=""; A=""; VI=""; AI=""
+for i in $(seq 1 120); do
+  # N_m3u8DL-RE stores live tracks under <tmp-dir>/<save-name>/<track>.
+  # Discover recursively because track folder names vary between releases.
+  TRACKS=$(python3 - "$TASK_ROOT" <<'PY_TRACK_DISCOVERY'
+import os, pathlib, subprocess, sys
+base = pathlib.Path(sys.argv[1])
+video = audio = ""
+for current, dirs, names in os.walk(base):
+    here = pathlib.Path(current)
+    init = next((here / n for n in ("_init_dec.mp4", "_init.mp4")
+                 if (here / n).is_file()), None)
+    if init is None or not any(n.endswith(".m4s") for n in names):
+        continue
+    label = here.name.lower()
+    kind = ""
+    if any(token in label for token in ("video", "avc1", "h264")):
+        kind = "video"
+    elif any(token in label for token in ("audio", "mp4a", "aac")):
+        kind = "audio"
+    else:
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                 "-of", "csv=p=0", str(init)],
+                capture_output=True, text=True, timeout=5)
+            media = set(probe.stdout.lower().split())
+            if "video" in media:
+                kind = "video"
+            elif "audio" in media:
+                kind = "audio"
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if kind == "video" and not video:
+        video = current
+    elif kind == "audio" and not audio:
+        audio = current
+print(video)
+print(audio)
+PY_TRACK_DISCOVERY
+)
+  V=$(printf '%s\n' "$TRACKS" | sed -n '1p')
+  A=$(printf '%s\n' "$TRACKS" | sed -n '2p')
+  if [ -n "$V" ] && [ -n "$A" ]; then
+    VI=""; AI=""
+    for candidate in "$V/_init_dec.mp4" "$V/_init.mp4"; do
+      if [ -s "$candidate" ]; then VI="$candidate"; break; fi
+    done
+    for candidate in "$A/_init_dec.mp4" "$A/_init.mp4"; do
+      if [ -s "$candidate" ]; then AI="$candidate"; break; fi
+    done
+    if [ -n "$VI" ] && [ -n "$AI" ]; then break; fi
+  fi
   sleep 1
 done
 if [ -z "$V" ] || [ -z "$A" ] || [ -z "$VI" ] || [ -z "$AI" ]; then
-  echo "[$(ts)] ERROR: init segments not found (video=$V audio=$A)" >> "$LOG"; exit 1
+  echo "[$(ts)] ERROR: live track folders/init segments not found (task_root=$TASK_ROOT video=$V audio=$A)" >> "$LOG"
+  echo "[$(ts)] DRM output tree:" >> "$LOG"
+  find "$HOME/kodigui/drm" -maxdepth 5 -type f 2>/dev/null | head -n 120 >> "$LOG"
+  echo "[$(ts)] Downloader log tail:" >> "$LOG"
+  tail -n 50 "$HOME/kodigui/drm-download.log" 2>/dev/null >> "$LOG"
+  exit 1
 fi
 mkdir -p "$HOME/kodigui/drm/hls"
 echo "[$(ts)] Found video=$V init=$(basename "$VI"); audio=$A init=$(basename "$AI")" >> "$LOG"
@@ -2023,7 +2267,9 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
         " --key " + shellQuote(keydrm) +
         " -sv worst "
         "--save-name drm --save-dir \"$HOME/kodigui/drm\" "
+        "--tmp-dir \"$HOME/kodigui/drm/tmp\" "
         "--mp4-real-time-decryption "
+        "--live-real-time-merge "
         "--live-keep-segments "
         "--select-audio id='audio_aar=128000' "
         "> \"$HOME/kodigui/drm-download.log\" 2>&1 < /dev/null & "
@@ -2217,3 +2463,4 @@ void MainWindow::on_refreshSystemMonitorButton_clicked()
     ui->textEdit->clear();
     process->start(program, arguments);
 }
+
