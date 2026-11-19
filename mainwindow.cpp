@@ -15,7 +15,6 @@
 #include <QRegularExpression>
 #include <QMessageBox>
 #include <QFile>
-#include <QFileInfo>
 #include <QTextStream>
 #include <QTextCursor>
 #include <QDir>
@@ -36,7 +35,6 @@
 #include <QSettings>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QAction>
 #include <QLabel>
 #include <QFont>
 #include <QWidget>
@@ -45,17 +43,13 @@
 #include <QWebEngineView>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
-#include <QWebEngineExtensionManager>
-#include <QWebEngineExtensionInfo>
 #include <QWebEngineCertificateError>
 #include <QWebEngineSettings>
 #include <QWebEngineUrlRequestInterceptor>
 #include <QApplication>
 #include <QClipboard>
 #include <utility>
-#include <QFileDialog>
 #include <QPushButton>
-#include <QMenu>
 #include <QStandardPaths>
 #include <QEvent>
 #include <QTabBar>
@@ -195,21 +189,6 @@ MainWindow::MainWindow(QWidget *parent)
     okkoLayout->setContentsMargins(0, 0, 0, 0);
     okkoLayout->setSpacing(4);
 
-    auto *okkoToolbar = new QWidget(okkoContainer);
-    auto *okkoToolbarLayout = new QHBoxLayout(okkoToolbar);
-    okkoToolbarLayout->setContentsMargins(6, 4, 6, 2);
-    auto *installOkkoExtensionButton = new QPushButton(
-        QStringLiteral("Загрузить расширение"), okkoToolbar);
-    auto *manageOkkoExtensionsButton = new QPushButton(
-        QStringLiteral("Расширения"), okkoToolbar);
-    auto *okkoExtensionStatus = new QLabel(
-        QStringLiteral("Поддерживаются совместимые расширения Manifest V3"),
-        okkoToolbar);
-    okkoToolbarLayout->addWidget(installOkkoExtensionButton);
-    okkoToolbarLayout->addWidget(manageOkkoExtensionsButton);
-    okkoToolbarLayout->addWidget(okkoExtensionStatus, 1);
-    okkoLayout->addWidget(okkoToolbar);
-
     auto *mpdToolbar = new QWidget(okkoContainer);
     auto *mpdToolbarLayout = new QHBoxLayout(mpdToolbar);
     mpdToolbarLayout->setContentsMargins(6, 0, 6, 4);
@@ -256,168 +235,6 @@ MainWindow::MainWindow(QWidget *parent)
     okkoView->setPage(new QWebEnginePage(okkoProfile, okkoView));
     okkoLayout->addWidget(okkoView, 1);
     ui->tabWidget->addTab(okkoContainer, QStringLiteral("okko.tv"));
-
-    okkoExtensionManager = okkoProfile->extensionManager();
-
-    connect(okkoExtensionManager, &QWebEngineExtensionManager::loadFinished, this,
-            [this, okkoExtensionStatus](const QWebEngineExtensionInfo &extension) {
-        QSettings settings;
-        const QString pendingPath =
-            settings.value(QStringLiteral("okko/pendingExtensionPath")).toString();
-        const bool isPendingLoad = !pendingPath.isEmpty() &&
-            QDir::cleanPath(extension.path()) == QDir::cleanPath(pendingPath);
-
-        if (extension.isLoaded()) {
-            if (isPendingLoad) {
-                settings.setValue(QStringLiteral("okko/extensionSourcePath"),
-                                  QDir::cleanPath(extension.path()));
-                settings.remove(QStringLiteral("okko/pendingExtensionPath"));
-            }
-
-            const QStringList disabledIds =
-                settings.value(QStringLiteral("okko/disabledExtensions")).toStringList();
-            const bool shouldEnable = !disabledIds.contains(extension.id());
-            okkoExtensionManager->setExtensionEnabled(extension, shouldEnable);
-            qInfo().noquote() << "[Okko extensions] Loaded:"
-                              << extension.name() << extension.path()
-                              << (shouldEnable ? "enabled" : "kept disabled");
-            okkoExtensionStatus->setText(
-                QStringLiteral("%1: %2")
-                    .arg(shouldEnable ? QStringLiteral("Расширение активно")
-                                      : QStringLiteral("Расширение отключено"),
-                         extension.name()));
-        } else {
-            if (isPendingLoad)
-                settings.remove(QStringLiteral("okko/pendingExtensionPath"));
-            qWarning().noquote() << "[Okko extensions] Load failed:"
-                                 << extension.name() << extension.error()
-                                 << "path:" << extension.path();
-            okkoExtensionStatus->setText(
-                QStringLiteral("Ошибка загрузки: %1").arg(extension.error()));
-            if (isPendingLoad) {
-                QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                    QStringLiteral("Не удалось загрузить расширение:\n%1")
-                        .arg(extension.error()));
-            }
-        }
-    });
-
-    connect(installOkkoExtensionButton, &QPushButton::clicked, this,
-            [this, okkoExtensionStatus]() {
-        const QString extensionPath = QFileDialog::getExistingDirectory(
-            this, QStringLiteral("Выберите папку расширения с manifest.json"),
-            QDir::homePath());
-        if (extensionPath.isEmpty())
-            return;
-
-        const QString manifestPath =
-            QDir(extensionPath).filePath(QStringLiteral("manifest.json"));
-        QFile manifestFile(manifestPath);
-        if (!manifestFile.open(QIODevice::ReadOnly)) {
-            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                QStringLiteral("В выбранной папке нет доступного manifest.json."));
-            return;
-        }
-
-        QJsonParseError parseError;
-        const QJsonDocument manifestDocument =
-            QJsonDocument::fromJson(manifestFile.readAll(), &parseError);
-        if (parseError.error != QJsonParseError::NoError ||
-            !manifestDocument.isObject()) {
-            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                QStringLiteral("Некорректный manifest.json:\n%1")
-                    .arg(parseError.errorString()));
-            return;
-        }
-
-        const QJsonObject manifest = manifestDocument.object();
-        if (manifest.value(QStringLiteral("manifest_version")).toInt() != 3) {
-            QMessageBox::warning(this, QStringLiteral("Расширения Okko"),
-                QStringLiteral("Qt WebEngine поддерживает только Manifest V3. "
-                               "Расширения Manifest V2 загрузить нельзя."));
-            return;
-        }
-
-        const QString extensionName =
-            manifest.value(QStringLiteral("name")).toString(QStringLiteral("Без имени"));
-        QSettings settings;
-        settings.setValue(QStringLiteral("okko/pendingExtensionPath"),
-                          QDir::cleanPath(extensionPath));
-
-        okkoExtensionStatus->setText(
-            QStringLiteral("Загрузка: %1…").arg(extensionName));
-        qInfo().noquote() << "[Okko extensions] Loading unpacked extension from:"
-                          << extensionPath;
-        // loadExtension uses the source directory directly. No copy into
-        // profile/Extensions, so repeated loads cannot hit Qt's install-name collision.
-        okkoExtensionManager->loadExtension(extensionPath);
-    });
-
-    // loadExtension() is session-scoped, so restore the selected unpacked
-    // extension on every KodiGui startup from its saved host-local source path.
-    QTimer::singleShot(0, this, [this, okkoExtensionStatus]() {
-        QSettings settings;
-        const QString extensionPath =
-            settings.value(QStringLiteral("okko/extensionSourcePath")).toString();
-        if (extensionPath.isEmpty())
-            return;
-
-        const QString manifestPath =
-            QDir(extensionPath).filePath(QStringLiteral("manifest.json"));
-        if (!QFileInfo(extensionPath).isDir() || !QFileInfo(manifestPath).isFile()) {
-            qWarning().noquote() << "[Okko extensions] Saved extension directory is missing:"
-                                 << extensionPath;
-            okkoExtensionStatus->setText(
-                QStringLiteral("Папка расширения не найдена: %1").arg(extensionPath));
-            return;
-        }
-
-        qInfo().noquote() << "[Okko extensions] Restoring unpacked extension:"
-                          << extensionPath;
-        okkoExtensionManager->loadExtension(extensionPath);
-    });
-
-    connect(manageOkkoExtensionsButton, &QPushButton::clicked, this,
-            [this, manageOkkoExtensionsButton]() {
-        QMenu menu(manageOkkoExtensionsButton);
-        const auto extensions = okkoExtensionManager->extensions();
-        if (extensions.isEmpty()) {
-            QAction *emptyAction = menu.addAction(
-                QStringLiteral("Нет загруженных расширений"));
-            emptyAction->setEnabled(false);
-        } else {
-            for (const QWebEngineExtensionInfo &extension : extensions) {
-                if (!extension.isLoaded())
-                    continue;
-                QAction *action = menu.addAction(
-                    extension.name().isEmpty()
-                        ? QStringLiteral("Расширение без имени") : extension.name());
-                action->setCheckable(true);
-                action->setChecked(extension.isEnabled());
-                connect(action, &QAction::toggled, this,
-                        [this, extension](bool enabled) {
-                    okkoExtensionManager->setExtensionEnabled(extension, enabled);
-                    QSettings settings;
-                    QStringList disabledIds =
-                        settings.value(QStringLiteral("okko/disabledExtensions")).toStringList();
-                    if (enabled)
-                        disabledIds.removeAll(extension.id());
-                    else if (!disabledIds.contains(extension.id()))
-                        disabledIds.append(extension.id());
-                    settings.setValue(QStringLiteral("okko/disabledExtensions"), disabledIds);
-                    qInfo() << "[Okko extensions]" << extension.name()
-                            << (enabled ? "enabled" : "disabled");
-                });
-            }
-            if (menu.isEmpty()) {
-                QAction *emptyAction = menu.addAction(
-                    QStringLiteral("Нет загруженных расширений"));
-                emptyAction->setEnabled(false);
-            }
-        }
-        menu.exec(manageOkkoExtensionsButton->mapToGlobal(
-            QPoint(0, manageOkkoExtensionsButton->height())));
-    });
 
     // Keep tab captions intact. Give tabs enough minimum width for readable
     // labels; when the complete row does not fit, Qt scrolls the tab bar.
