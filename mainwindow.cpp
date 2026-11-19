@@ -240,7 +240,7 @@ MainWindow::MainWindow(QWidget *parent)
                            "pattern=$name; case $name in N_m3u8DL-+) pattern=N_m3u8DL ;; esac; "
                            "found=0; "
                            "for file in /proc/[0-9]*/cmdline; do "
-                           "pid=\${file#/proc/}; pid=\${pid%/cmdline}; "
+                           "pid=${file#/proc/}; pid=${pid%/cmdline}; "
                            "[ $pid = $$ ] && continue; "
                            "[ $pid = $PPID ] && continue; "
                            "cmd=$(tr '\\000' ' ' < $file 2>/dev/null) || continue; "
