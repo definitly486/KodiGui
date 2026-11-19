@@ -211,11 +211,31 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Capture DASH manifests from Okko requests and update the UI on its thread.
     auto *okkoMpdInterceptor = new OkkoMpdUrlInterceptor(
-        okkoProfile, this, [mpdUrlEdit](const QString &url) {
-            if (mpdUrlEdit->text() == url)
-                return;
-            mpdUrlEdit->setText(url);
-            qInfo().noquote() << "[Okko MPD] DASH manifest captured:" << url;
+        okkoProfile, this, [this, mpdUrlEdit](const QString &url) {
+            const QString downloadsPath = QDir::home().filePath(
+                QStringLiteral("Downloads"));
+            if (QDir().mkpath(downloadsPath)) {
+                const QString filePath = QDir(downloadsPath).filePath(
+                    QStringLiteral("widevine_key.txt"));
+                QFile file(filePath);
+                if (file.open(QIODevice::WriteOnly | QIODevice::Truncate |
+                              QIODevice::Text)) {
+                    file.write(url.toUtf8());
+                    file.write("\\n");
+                    file.close();
+                } else {
+                    qWarning().noquote() << "[Okko MPD] Cannot write:"
+                                         << filePath << file.errorString();
+                }
+            } else {
+                qWarning().noquote() << "[Okko MPD] Cannot create Downloads:"
+                                     << downloadsPath;
+            }
+
+            if (mpdUrlEdit->text() != url) {
+                mpdUrlEdit->setText(url);
+                qInfo().noquote() << "[Okko MPD] DASH manifest captured:" << url;
+            }
         });
     okkoProfile->setUrlRequestInterceptor(okkoMpdInterceptor);
     connect(copyMpdUrlButton, &QPushButton::clicked, this, [this, mpdUrlEdit]() {
