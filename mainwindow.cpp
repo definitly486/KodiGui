@@ -2129,7 +2129,7 @@ downloader_running() {
   fi
   # The recorded PID can be a short-lived shell wrapper on some systems.
   # Keep waiting while the actual downloader process is still alive.
-  pgrep -f '[N]_[m]3u8DL-RE|N_m3u8DL-RE' >/dev/null 2>&1
+  pgrep -f '[N]_m3u8DL-RE' >/dev/null 2>&1
 }
 
 publish_merged_files() {
