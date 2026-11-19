@@ -88,6 +88,7 @@ private slots:
      void on_stopDrmPlaybackButton_clicked();
 
      void on_startDrmDownloadButton_clicked();
+     void on_startDrmLegacyDownloadButton_clicked();
 
       QString  currentDrmUrl();
 
