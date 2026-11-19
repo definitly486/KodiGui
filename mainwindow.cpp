@@ -257,7 +257,7 @@ MainWindow::MainWindow(QWidget *parent)
                 }
                 QTabBar::tab {
                     padding: 4px 5px; margin: 1px 1px 0 0;
-                    min-width: 100px; font-size: 8pt;
+                    min-width: 0px; font-size: 7pt;
                 }
                 QTabBar::tab:selected {
                     background: #ffffff; color: #087f8c;
@@ -334,7 +334,7 @@ MainWindow::MainWindow(QWidget *parent)
                     padding: 4px 5px; margin: 1px 1px 0 0;
                     border-top-left-radius: 6px;
                     border-top-right-radius: 6px;
-                    min-width: 100px; font-size: 8pt;
+                    min-width: 0px; font-size: 7pt;
                 }
                 QTabBar::tab:selected {
                     background: rgba(133, 87, 37, 238);
@@ -421,7 +421,7 @@ MainWindow::MainWindow(QWidget *parent)
                 }
                 QTabBar::tab {
                     padding: 4px 5px; margin: 1px 1px 0 0;
-                    min-width: 100px; font-size: 8pt;
+                    min-width: 0px; font-size: 7pt;
                 }
                 QTabBar::tab:selected { background: #1d2532; color: #55d6c2; border-color: #3b9e98; font-weight: 600; }
                 QTabBar::tab:hover:!selected { background: #2b394b; color: #ffffff; }
@@ -514,14 +514,13 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tabWidget->setTabIcon(8, style()->standardIcon(QStyle::SP_MessageBoxInformation));
     ui->tabWidget->setTabIcon(9, style()->standardIcon(QStyle::SP_MessageBoxWarning));
 
-    // Показываем полные названия вкладок. Если все вкладки не помещаются
-    // по ширине окна, пользователь может прокручивать панель стрелками.
+    // Убираем стрелки прокрутки: вкладки распределяются по доступной ширине окна.
     ui->tabWidget->setElideMode(Qt::ElideNone);
-    ui->tabWidget->setUsesScrollButtons(true);
+    ui->tabWidget->setUsesScrollButtons(false);
     QTabBar *tabs = ui->tabWidget->tabBar();
     tabs->setElideMode(Qt::ElideNone);
-    tabs->setExpanding(false);
-    tabs->setUsesScrollButtons(true);
+    tabs->setExpanding(true);
+    tabs->setUsesScrollButtons(false);
     tabs->setMinimumHeight(tabs->sizeHint().height());
     tabs->setIconSize(QSize(14, 14));
 
@@ -597,8 +596,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     debugOutput = ui->debugTextEdit;
-    ui->debugTextEdit->document()->setMaximumBlockCount(15000);
-    connect(ui->debugEnableCheckBox, &QCheckBox::toggled, this, [](bool enabled) {
+    ui->debugTextEdit->document()->setMaximumBlockCount(15000);    connect(ui->debugEnableCheckBox, &QCheckBox::toggled, this, [](bool enabled) {
         if (enabled) {
             debugOutputEnabled.store(true, std::memory_order_relaxed);
             qInfo() << "Debug output enabled";
@@ -1197,8 +1195,7 @@ void MainWindow::on_playIptvUrlButton_clicked()
 
                     // Ждём появления каналов
                     auto waitForChannels = std::make_shared<std::function<void(int)>>();
-                    *waitForChannels = [safeThis, waitForChannels](int attemptsLeft){
-                        if(!safeThis) return;
+                    *waitForChannels = [safeThis, waitForChannels](int attemptsLeft){                        if(!safeThis) return;
                         QJsonObject getGroups;
                         getGroups["jsonrpc"]="2.0";
                         getGroups["method"]="PVR.GetChannelGroups";
@@ -1797,8 +1794,7 @@ void MainWindow::on_startDrmDownloadButton_clicked()
         }
 
         QTextStream stream(&keyFile);
-        const QStringList lines = stream.readAll().split(
-            QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
+        const QStringList lines = stream.readAll().split(            QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
         keyFile.close();
 
         if (lines.size() < 2) {
@@ -2221,4 +2217,3 @@ void MainWindow::on_refreshSystemMonitorButton_clicked()
     ui->textEdit->clear();
     process->start(program, arguments);
 }
-
