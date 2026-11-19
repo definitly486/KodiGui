@@ -126,6 +126,9 @@ protected:
  QTimer *drmFileCheckTimer = nullptr;
  QProcess *drmFileCheckProcess = nullptr;
  int drmFileCheckAttempts = 0;
+ QTimer *drmLegacyFileCheckTimer = nullptr;
+ QProcess *drmLegacyFileCheckProcess = nullptr;
+ int drmLegacyFileCheckAttempts = 0;
    QNetworkAccessManager *manager;
    QPoint mousePadPressPos;
    bool mousePadPressed = false;
