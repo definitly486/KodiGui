@@ -2227,9 +2227,10 @@ if base.is_dir():
         def stable_copy(src, dst):
             try:
                 first = src.stat()
-                time.sleep(0.08)
+                if first.st_size <= 0 or time.time() - first.st_mtime < 0.25:
+                    return
                 second = src.stat()
-                if first.st_size <= 0 or first.st_size != second.st_size or first.st_mtime_ns != second.st_mtime_ns:
+                if first.st_size != second.st_size or first.st_mtime_ns != second.st_mtime_ns:
                     return
                 try:
                     existing = dst.stat()
@@ -2239,7 +2240,10 @@ if base.is_dir():
                     pass
                 tmp = dst.with_name(dst.name + ".part")
                 shutil.copy2(src, tmp)
-                if tmp.stat().st_size == second.st_size:
+                after = src.stat()
+                if (tmp.stat().st_size == second.st_size and
+                        after.st_size == second.st_size and
+                        after.st_mtime_ns == second.st_mtime_ns):
                     os.replace(tmp, dst)
                 else:
                     tmp.unlink(missing_ok=True)
