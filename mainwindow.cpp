@@ -2124,7 +2124,12 @@ mkdir -p "$OUT"
 downloader_running() {
   local p=""
   [ -s "$HOME/kodigui/drm_download.pid" ] && p=$(cat "$HOME/kodigui/drm_download.pid" 2>/dev/null || true)
-  [ -n "$p" ] && kill -0 "$p" 2>/dev/null
+  if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
+    return 0
+  fi
+  # The recorded PID can be a short-lived shell wrapper on some systems.
+  # Keep waiting while the actual downloader process is still alive.
+  pgrep -f '[N]_[m]3u8DL-RE|N_m3u8DL-RE' >/dev/null 2>&1
 }
 
 publish_merged_files() {
@@ -2309,10 +2314,8 @@ mkdir -p "$HOME/kodigui/drm/hls"
 echo "[$(ts)] Found video=$V init=$(basename "$VI"); audio=$A init=$(basename "$AI")" >> "$LOG"
 LAST_V=0; LAST_A=0
 while true; do
-  dp=""
-  [ -s "$HOME/kodigui/drm_download.pid" ] && dp=$(cat "$HOME/kodigui/drm_download.pid" 2>/dev/null || true)
   finished=0
-  if [ -z "$dp" ] || ! kill -0 "$dp" 2>/dev/null; then finished=1; fi
+  if ! downloader_running; then finished=1; fi
   python3 - "$V" "$A" "$HOME/kodigui/drm" "$finished" <<'PY_BUILDER'
 import glob, math, os, pathlib, sys, tempfile, time
 vdir, adir, root, finished = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3]), sys.argv[4] == '1'
