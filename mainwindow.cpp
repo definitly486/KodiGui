@@ -178,6 +178,7 @@ MainWindow::MainWindow(QWidget *parent)
     auto *ytDlpStatusLabel = makeDrmProcessStatus(QStringLiteral("yt-dlp"));
     auto *streamlinkStatusLabel = makeDrmProcessStatus(QStringLiteral("streamlink"));
     auto *ffmpegStatusLabel = makeDrmProcessStatus(QStringLiteral("ffmpeg"));
+    auto *nM3u8StatusLabel = makeDrmProcessStatus(QStringLiteral("N_m3u8DL-+"));
     drmProcessStatusLayout->addStretch(1);
     ui->drmLayout->insertLayout(2, drmProcessStatusLayout);
 
@@ -200,7 +201,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (exitStatus != QProcess::NormalExit || exitCode != 0) {
             const QString unavailable = QStringLiteral("нет связи");
             for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
-                                  ffmpegStatusLabel}) {
+                                  ffmpegStatusLabel, nM3u8StatusLabel}) {
                 label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
                                + QStringLiteral(": ") + unavailable);
                 label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
@@ -216,12 +217,14 @@ MainWindow::MainWindow(QWidget *parent)
                             output.contains(QStringLiteral("streamlink=1")));
         setDrmProcessStatus(ffmpegStatusLabel, QStringLiteral("ffmpeg"),
                             output.contains(QStringLiteral("ffmpeg=1")));
+        setDrmProcessStatus(nM3u8StatusLabel, QStringLiteral("N_m3u8DL-+"),
+                            output.contains(QStringLiteral("N_m3u8DL-+=1")));
     });
 
     connect(drmProcessStatusProcess, &QProcess::errorOccurred, this,
             [=](QProcess::ProcessError) {
         for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
-                              ffmpegStatusLabel}) {
+                              ffmpegStatusLabel, nM3u8StatusLabel}) {
             label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
                            + QStringLiteral(": нет связи"));
             label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
@@ -233,10 +236,10 @@ MainWindow::MainWindow(QWidget *parent)
             return;
         drmProcessStatusProcess->start(QStringLiteral("ssh"), {
             QStringLiteral("pi@192.168.8.45"),
-            QStringLiteral("for name in yt-dlp streamlink ffmpeg; do "
+            QStringLiteral("for name in yt-dlp streamlink ffmpeg N_m3u8DL-+; do "
                            "if ps -axo pid=,comm=,args= | PROC_NAME=\\\"$name\\\" awk "
                            "'$2 !~ /^(sh|bash|dash|awk|grep|ssh)$/ && "
-                           "$0 ~ (\"(^|[ /])\" ENVIRON[\"PROC_NAME\"] \"([[:space:]]|$)\") "
+                           "index($0, ENVIRON[\"PROC_NAME\"]) > 0 "
                            "{found=1} END {exit !found}'; then "
                            "echo \\"$name=1\\"; else echo \\"$name=0\\"; fi; done")
         });
