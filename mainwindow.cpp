@@ -291,17 +291,52 @@ MainWindow::MainWindow(QWidget *parent)
                     break;
                 const QString line = QString::fromUtf8(pending.left(newline)).trimmed();
                 pending.remove(0, newline + 1);
-                if (line.isEmpty())
-                    continue;
-                if (line.contains(QStringLiteral("Loaded key:"),
-                                  Qt::CaseInsensitive) ||
-                    line.contains(QStringLiteral("decryption key:"),
-                                  Qt::CaseInsensitive)) {
-                    okkoDrmLog->append(
-                        QStringLiteral("[OpenWV] DRM key output suppressed"));
-                    continue;
+                              if (line.isEmpty())
+                continue;
+
+            // Проверяем, содержит ли строка упоминание ключа
+            if (line.contains(QStringLiteral("Loaded key:"), Qt::CaseInsensitive) ||
+                line.contains(QStringLiteral("decryption key:"), Qt::CaseInsensitive)) {
+                
+                // 1. Извлекаем ТОЛЬКО сам ключ с помощью регулярного выражения
+                // Паттерн ищет 32 hex-символа, двоеточие и еще 32 hex-символа
+                QRegularExpression re(QStringLiteral("([a-fA-F0-9]{32}:[a-fA-F0-9]{32})"));
+                QRegularExpressionMatch match = re.match(line);
+                
+                QString extractedKey;
+                if (match.hasMatch()) {
+                    extractedKey = match.captured(1); // Берем только найденную группу (сам ключ)
+                } else {
+                    // Если вдруг формат изменился, fallback на всю строку (маловероятно)
+                    extractedKey = line; 
                 }
-                okkoDrmLog->append(line.toHtmlEscaped());
+
+                // 2. Показываем в логу приложения, что ключ пойман (для удобства)
+                okkoDrmLog->append(QStringLiteral("✅ Ключ извлечен: ") + extractedKey.toHtmlEscaped());
+
+                // 3. Записываем в файл СТРОГО по формату
+                QString filePath = QDir::homePath() + "/Downloads/widevine_key.txt";
+                QFile file(filePath);
+                
+                if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                    QTextStream out(&file);
+                    
+                    // Строка 1: Пустая строка (или можно написать комментарий, например "# Widevine Key")
+                    out << "\n";
+                    
+                    // Строка 2: Строго только извлеченный ключ
+                    out << extractedKey << "\n";
+                    
+                    file.close();
+                } else {
+                    okkoDrmLog->append(QStringLiteral("❌ Ошибка записи в файл: ") + filePath);
+                }
+                
+                continue; // Прерываем итерацию, чтобы эта строка не дублировалась в общем логе
+            }
+            
+            // Все остальные строки лога выводятся как обычно
+            okkoDrmLog->append(line.toHtmlEscaped());
                 if (auto *bar = okkoDrmLog->verticalScrollBar())
                     bar->setValue(bar->maximum());
             }
