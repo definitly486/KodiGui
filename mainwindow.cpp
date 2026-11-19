@@ -257,7 +257,7 @@ MainWindow::MainWindow(QWidget *parent)
                 }
                 QTabBar::tab {
                     padding: 4px 5px; margin: 1px 1px 0 0;
-                    min-width: 0px; font-size: 8pt;
+                    min-width: 100px; font-size: 8pt;
                 }
                 QTabBar::tab:selected {
                     background: #ffffff; color: #087f8c;
@@ -514,11 +514,15 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tabWidget->setTabIcon(8, style()->standardIcon(QStyle::SP_MessageBoxInformation));
     ui->tabWidget->setTabIcon(9, style()->standardIcon(QStyle::SP_MessageBoxWarning));
 
-    // Компактная панель: все разделы помещаются в одну строку без стрелок прокрутки.
+    // Показываем полные названия вкладок. Если все вкладки не помещаются
+    // по ширине окна, пользователь может прокручивать панель стрелками.
+    ui->tabWidget->setElideMode(Qt::ElideNone);
+    ui->tabWidget->setUsesScrollButtons(true);
     QTabBar *tabs = ui->tabWidget->tabBar();
-    tabs->setUsesScrollButtons(false);
-    tabs->setExpanding(true);
-    tabs->setElideMode(Qt::ElideRight);
+    tabs->setElideMode(Qt::ElideNone);
+    tabs->setExpanding(false);
+    tabs->setUsesScrollButtons(true);
+    tabs->setMinimumHeight(tabs->sizeHint().height());
     tabs->setIconSize(QSize(14, 14));
 
     // Отдельная вкладка настроек внешнего вида.
