@@ -228,7 +228,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    connect(drmProcessStatusTimer, &QTimer::timeout, this, [=]() {
+    auto checkDrmProcesses = [=]() {
         if (drmProcessStatusProcess->state() != QProcess::NotRunning)
             return;
         drmProcessStatusProcess->start(QStringLiteral("ssh"), {
@@ -242,7 +242,8 @@ MainWindow::MainWindow(QWidget *parent)
                            "echo ffmpeg=1; "
                            "else echo \"$name=0\"; fi; done")
         });
-    });
+    };
+    connect(drmProcessStatusTimer, &QTimer::timeout, this, checkDrmProcesses);
 
     const int drmPageIndex = ui->tabWidget->indexOf(ui->drm);
     connect(ui->tabWidget, &QTabWidget::currentChanged, this,
@@ -251,7 +252,7 @@ MainWindow::MainWindow(QWidget *parent)
             if (!drmProcessStatusTimer->isActive()) {
                 drmProcessStatusTimer->start();
                 if (drmProcessStatusProcess->state() == QProcess::NotRunning)
-                    drmProcessStatusTimer->timeout();
+                    checkDrmProcesses();
             }
         } else {
             drmProcessStatusTimer->stop();
