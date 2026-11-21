@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QDebug>
 #include <QByteArray>
+#include <QStandardPaths>
 #ifdef Q_OS_WIN
 #  include <winsock2.h>
 #else
@@ -63,8 +64,14 @@ int main(int argc, char *argv[])
     // OpenWV is built separately; its device identity must remain local.
     QString widevinePath = qEnvironmentVariable("KODIGUI_WIDEVINE_PATH");
     if (widevinePath.isEmpty()) {
+#ifdef Q_OS_WIN
+        widevinePath = QDir(QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation)).filePath(
+                QStringLiteral("widevine/widevinecdm.dll"));
+#else
         widevinePath = QDir::home().filePath(
             QStringLiteral(".local/share/KodiGui/widevine/libwidevinecdm.so"));
+#endif
     }
 
     const QFileInfo widevineInfo(widevinePath);
