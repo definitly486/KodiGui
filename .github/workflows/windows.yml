@@ -62,7 +62,8 @@ jobs:
         run: |
           $dist = "dist/kodigui-windows-x86_64"
           New-Item -ItemType Directory -Force -Path $dist | Out-Null
-          Copy-Item .\kodigui.exe $dist
+          $exe = if (Test-Path .\release\kodigui.exe) { .\release\kodigui.exe } elseif (Test-Path .\kodigui.exe) { .\kodigui.exe } else { throw "kodigui.exe not found after build" }
+          Copy-Item $exe $dist
           windeployqt --release --compiler-runtime --no-translations --dir $dist "$dist\kodigui.exe"
           if ($LASTEXITCODE -ne 0) { throw "windeployqt failed" }
           Get-ChildItem "$env:KODIGUI_VCPKG_BIN" -Filter "*.dll" |
