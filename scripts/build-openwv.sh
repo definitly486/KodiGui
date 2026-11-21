@@ -19,6 +19,26 @@ for tool in git cargo clang++; do
     fi
 done
 
+# OpenWV uses Rust Edition 2024, which requires Cargo/Rust 1.85 or newer.
+# Prefer an installed rustup stable toolchain when the system Cargo is too old.
+CARGO_RUN="cargo"
+CARGO_VERSION=$(cargo --version | sed -E 's/^cargo ([0-9]+)\\.([0-9]+).*/\\1 \\2/')
+CARGO_MAJOR=$(printf '%s\\n' "$CARGO_VERSION" | awk '{print $1}')
+CARGO_MINOR=$(printf '%s\\n' "$CARGO_VERSION" | awk '{print $2}')
+if [ "$CARGO_MAJOR" -lt 1 ] || { [ "$CARGO_MAJOR" -eq 1 ] && [ "$CARGO_MINOR" -lt 85 ]; }; then
+    if command -v rustup >/dev/null 2>&1 && rustup toolchain list | grep -q '^stable'; then
+        echo "[OpenWV] System Cargo is too old; using the installed rustup stable toolchain."
+        CARGO_RUN="rustup run stable cargo"
+    else
+        echo "Error: OpenWV requires Rust/Cargo 1.85 or newer (Rust Edition 2024)." >&2
+        echo "Your version: $(cargo --version)" >&2
+        echo "Install/update stable Rust, then retry:" >&2
+        echo "  rustup toolchain install stable" >&2
+        echo "  rustup default stable" >&2
+        exit 1
+    fi
+fi
+
 BUILD_ROOT=$(mktemp -d /tmp/kodigui-openwv.XXXXXX)
 cleanup() {
     rm -rf "$BUILD_ROOT"
@@ -37,7 +57,7 @@ install -m 600 "$WVD_PATH" "$SRC/embedded.wvd"
 echo "[OpenWV] Building release CDM..."
 (
     cd "$SRC"
-    cargo build --release --locked
+    $CARGO_RUN build --release --locked
 )
 
 LIB="$SRC/target/release/libwidevinecdm.so"
