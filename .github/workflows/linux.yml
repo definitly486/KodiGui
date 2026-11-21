@@ -1,0 +1,74 @@
+name: Linux build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build on Ubuntu 24.04
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            qt6-base-dev \
+            qt6-webengine-dev \
+            qt6-tools-dev-tools \
+            libssh2-1-dev
+
+      - name: Build KodiGui
+        run: ./scripts/build-linux.sh
+
+      - name: Check executable dependencies
+        run: |
+          test -x ./kodigui
+          ldd ./kodigui | tee ldd-report.txt
+          if grep -q "not found" ldd-report.txt; then
+            echo "Unresolved shared library dependencies detected."
+            exit 1
+          fi
+
+      - name: Package Linux binary
+        run: |
+          mkdir -p dist/kodigui-linux-x86_64
+          install -m 0755 ./kodigui dist/kodigui-linux-x86_64/kodigui
+          cp README.md dist/kodigui-linux-x86_64/README.md
+          cp ldd-report.txt dist/kodigui-linux-x86_64/
+          tar -C dist -czf kodigui-linux-x86_64.tar.gz kodigui-linux-x86_64
+          sha256sum kodigui-linux-x86_64.tar.gz > SHA256SUMS
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kodigui-linux-x86_64
+          path: |
+            kodigui-linux-x86_64.tar.gz
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kodigui-linux-x86_64.tar.gz
+            SHA256SUMS
+          generate_release_notes: true
