@@ -1,5 +1,9 @@
 name: Windows build
 
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
@@ -94,7 +98,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish to GitHub Release
+      - name: Publish versioned tag build to GitHub Release
         if: startsWith(github.ref, 'refs/tags/windows-v')
         uses: softprops/action-gh-release@v2
         with:
@@ -102,3 +106,32 @@ jobs:
             kodigui-windows-x86_64.zip
             SHA256SUMS
           generate_release_notes: true
+
+  publish-preview:
+    name: Publish Windows preview release
+    needs: build-windows
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/windows-support'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kodigui-windows-x86_64
+          path: release-assets
+
+      - name: Publish preview release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: windows-build-${{ github.run_number }}
+          commit: ${{ github.sha }}
+          name: KodiGui Windows build ${{ github.run_number }}
+          body: |
+            Automated Windows x86_64 preview build from feature/windows-support.
+
+            Download the ZIP and verify it with the accompanying SHA256SUMS file.
+          artifacts: release-assets/kodigui-windows-x86_64.zip,release-assets/SHA256SUMS
+          artifactErrorsFailBuild: true
+          prerelease: true
+          makeLatest: false
+          generateReleaseNotes: true
