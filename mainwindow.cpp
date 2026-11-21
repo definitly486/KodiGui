@@ -2309,6 +2309,10 @@ void MainWindow::on_getonairnow_clicked()
     QString pythonCmd = QStandardPaths::findExecutable(QStringLiteral("python3.11"));
     if (pythonCmd.isEmpty())
         pythonCmd = QStandardPaths::findExecutable(QStringLiteral("python3"));
+#ifdef Q_OS_WIN
+    if (pythonCmd.isEmpty())
+        pythonCmd = QStandardPaths::findExecutable(QStringLiteral("python"));
+#endif
     if (pythonCmd.isEmpty()) {
         ui->textBrowseronairnow->append(QStringLiteral("<font color='red'>Python 3 не найден. Установите python3.</font>"));
         return;
