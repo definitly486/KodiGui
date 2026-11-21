@@ -82,9 +82,6 @@
 // Выполняет внешнюю команду (используется для "ssh pi@... <cmd>").
 // Определена ниже в файле; объявлена здесь, т.к. используется раньше.
 void runCommand(const QString &command, const QStringList &args = {});
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 namespace {
 class OkkoMpdUrlInterceptor final : public QWebEngineUrlRequestInterceptor
