@@ -1666,52 +1666,63 @@ void MainWindow::on_stopPvrChannelButton_clicked()
 
 void MainWindow::on_startKodiButton_clicked()
 {
+    QString program;
     QStringList arguments;
-    arguments << "-p"
-              << "639639"
-              << "ssh"
-              << "-o"
-              << "ConnectTimeout=10"
-              << "pi@192.168.8.45"
-              << "nohup kodi >/dev/null 2>&1 </dev/null &";
-
-    const bool started = QProcess::startDetached("sshpass", arguments);
-
-    if (!started) {
-        qWarning() << "Start Kodi: failed to launch sshpass";
+    if (QStandardPaths::findExecutable(QStringLiteral("sshpass")).isEmpty()) {
+        // Windows OpenSSH uses the user's configured key/agent instead of sshpass.
+        program = QStringLiteral("ssh");
+        arguments << "-o" << "ConnectTimeout=10"
+                  << "pi@192.168.8.45"
+                  << "nohup kodi >/dev/null 2>&1 </dev/null &";
     } else {
-        qDebug() << "Start Kodi: SSH launch initiated";
+        program = QStringLiteral("sshpass");
+        arguments << "-p" << "639639" << "ssh"
+                  << "-o" << "ConnectTimeout=10"
+                  << "pi@192.168.8.45"
+                  << "nohup kodi >/dev/null 2>&1 </dev/null &";
     }
+
+    const bool started = QProcess::startDetached(program, arguments);
+    if (!started)
+        qWarning() << "Start Kodi: failed to launch" << program;
+    else
+        qDebug() << "Start Kodi: SSH launch initiated";
 }
 
 
 
 void MainWindow::on_stopKodiButton_clicked()
 {
-
     QProcess process;
+    QString program;
     QStringList arguments;
-    arguments   << "-p"
-              << "639639"
-              << "ssh"
-              <<  "pi@192.168.8.45"
-              <<  "killall -9 kodi.bin  &";
-    process.start("sshpass", arguments);
+    if (QStandardPaths::findExecutable(QStringLiteral("sshpass")).isEmpty()) {
+        program = QStringLiteral("ssh");
+        arguments << "pi@192.168.8.45" << "killall -9 kodi.bin &";
+    } else {
+        program = QStringLiteral("sshpass");
+        arguments << "-p" << "639639" << "ssh"
+                  << "pi@192.168.8.45" << "killall -9 kodi.bin &";
+    }
+    process.start(program, arguments);
     process.waitForFinished();
-
 }
 
 
 void MainWindow::on_rebootKodiButton_clicked()
 {
     QProcess process;
+    QString program;
     QStringList arguments;
-    arguments   << "-p"
-              << "639639"
-              << "ssh"
-              <<  "pi@192.168.8.45"
-              <<  "sudo reboot &";
-    process.start("sshpass", arguments);
+    if (QStandardPaths::findExecutable(QStringLiteral("sshpass")).isEmpty()) {
+        program = QStringLiteral("ssh");
+        arguments << "pi@192.168.8.45" << "sudo reboot &";
+    } else {
+        program = QStringLiteral("sshpass");
+        arguments << "-p" << "639639" << "ssh"
+                  << "pi@192.168.8.45" << "sudo reboot &";
+    }
+    process.start(program, arguments);
     process.waitForFinished();
 }
 
@@ -3397,13 +3408,16 @@ void MainWindow::on_refreshSystemMonitorButton_clicked()
         ui->textEdit->append(QString::fromUtf8(data));
     });
 
-    QString program = "sshpass";
+    QString program;
     QStringList arguments;
-
-    arguments << "-p" << "639639"
-              << "ssh"
-              << "pi@192.168.8.45"
-              << "top -b -n 1";
+    if (QStandardPaths::findExecutable(QStringLiteral("sshpass")).isEmpty()) {
+        program = QStringLiteral("ssh");
+        arguments << "pi@192.168.8.45" << "top -b -n 1";
+    } else {
+        program = QStringLiteral("sshpass");
+        arguments << "-p" << "639639" << "ssh"
+                  << "pi@192.168.8.45" << "top -b -n 1";
+    }
     ui->textEdit->clear();
     process->start(program, arguments);
 }
