@@ -2245,7 +2245,13 @@ void MainWindow::on_getonairnow_clicked()
     }
 
     // 3. Используем точно тот Python, который у тебя есть
-    QString pythonCmd = "/usr/local/bin/python3.11";
+    QString pythonCmd = QStandardPaths::findExecutable(QStringLiteral("python3.11"));
+    if (pythonCmd.isEmpty())
+        pythonCmd = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    if (pythonCmd.isEmpty()) {
+        ui->textBrowseronairnow->append(QStringLiteral("<font color='red'>Python 3 не найден. Установите python3.</font>"));
+        return;
+    }
 
     ui->textBrowseronairnow->append("<i>Запуск матча...</i>");
     ui->textBrowseronairnow->append("<small>" + pythonCmd + " " + scriptPath + "</small><hr>");
