@@ -20,7 +20,13 @@ Write-Host "[KodiGui] Compiling..."
 & nmake /NOLOGO
 if ($LASTEXITCODE -ne 0) { throw "nmake failed with exit code $LASTEXITCODE" }
 
-if (-not (Test-Path .\kodigui.exe)) {
-    throw "Build completed but kodigui.exe was not produced."
+# qmake places CONFIG+=release targets in release\\ by default on Windows.
+$exeCandidates = @(
+    (Join-Path $root "release\kodigui.exe"),
+    (Join-Path $root "kodigui.exe")
+)
+$exe = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $exe) {
+    throw "Build completed but kodigui.exe was not found in release\ or the project root."
 }
-Write-Host "[KodiGui] Build successful: $root\kodigui.exe"
+Write-Host "[KodiGui] Build successful: $exe"
