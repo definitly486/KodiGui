@@ -27,6 +27,19 @@ bash ./scripts/build-linux.sh
 
 The executable is created as `./kodigui`.
 
+## Windows build
+
+Supported CI target: Windows 2022 x86_64 using the MSYS2 MinGW-w64 toolchain and Qt 6 (including Qt WebEngine).
+
+Build locally from an MSYS2 MinGW 64-bit shell after installing the same packages as the workflow:
+
+```bash
+pacman -S --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-webengine mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-libssh2 make pkgconf
+bash ./scripts/build-windows.sh
+```
+
+The executable is created as `./kodigui.exe`. The Windows workflow deploys Qt runtime files and packages a portable `kodigui-windows-x86_64.zip`. The archive does not contain Widevine, a `.wvd` device file, account cookies, or other credentials. Windows builds use Winsock for the libssh2 SFTP connection. The Linux-only POSIX stdout/stderr pipe integration is disabled on Windows; normal process diagnostics remain available.
+
 ## Okko and Widevine DRM
 
 The **okko.tv** tab opens Okko inside the application's embedded Qt WebEngine browser. It is not an external browser. The tab has its own persistent browser profile, so the Okko login/session is kept between application launches on the computer running KodiGui.
@@ -111,6 +124,8 @@ Do not post diagnostic logs, screenshots, MPD URLs, account cookies, device file
 - Widevine playback requires a separately supplied compatible CDM. Set `KODIGUI_WIDEVINE_PATH` to its `libwidevinecdm.so` path, or place it at `~/.local/share/KodiGui/widevine/libwidevinecdm.so`. No Widevine binary is bundled.
 
 ## GitHub Actions
+
+The Windows workflow builds on pushes and pull requests targeting `feature/windows-support`, on `windows-v*` tags, and on manual dispatch. It uploads the `kodigui-windows-x86_64.zip` archive and SHA-256 checksum as a workflow artifact. Tag builds are also attached to the corresponding GitHub Release.
 
 The Linux workflow builds on pushes and pull requests targeting `main`, on `v*` tags, and on manual dispatch. It uploads the `kodigui-linux-x86_64` archive and checksum as a workflow artifact. Tag builds are also attached to the corresponding GitHub Release.
 
