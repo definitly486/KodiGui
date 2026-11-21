@@ -38,6 +38,10 @@ unix {
     PKGCONFIG += libssh2
 }
 
-win32 {
+win32:msvc {
+    LIBS += libssh2.lib ws2_32.lib
+}
+
+win32:!msvc {
     LIBS += -lssh2 -lws2_32
 }
