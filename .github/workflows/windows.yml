@@ -1,0 +1,96 @@
+name: Windows build
+
+on:
+  push:
+    branches:
+      - feature/windows-support
+    tags:
+      - "windows-v*"
+  pull_request:
+    branches:
+      - feature/windows-support
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build on Windows 2022 (MinGW-w64)
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 MinGW-w64 and Qt 6
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-webengine
+            mingw-w64-x86_64-qt6-tools
+            mingw-w64-x86_64-libssh2
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-make
+            zip
+
+      - name: Build KodiGui
+        run: bash ./scripts/build-windows.sh
+
+      - name: Deploy Qt runtime
+        run: |
+          mkdir -p dist/kodigui-windows-x86_64
+          cp ./kodigui.exe dist/kodigui-windows-x86_64/
+          windeployqt --release --compiler-runtime --no-translations \
+            --dir dist/kodigui-windows-x86_64 \
+            dist/kodigui-windows-x86_64/kodigui.exe
+
+      - name: Bundle libssh2 runtime dependencies
+        run: |
+          for dll in libssh2-1.dll libcrypto-3-x64.dll zlib1.dll \
+                     libwinpthread-1.dll libgcc_s_seh-1.dll libstdc++-6.dll; do
+            if [[ -f "/mingw64/bin/${dll}" ]]; then
+              cp "/mingw64/bin/${dll}" dist/kodigui-windows-x86_64/
+            fi
+          done
+          cp README.md dist/kodigui-windows-x86_64/
+          cp LICENSE dist/kodigui-windows-x86_64/ 2>/dev/null || true
+
+      - name: Verify portable package
+        run: |
+          test -s dist/kodigui-windows-x86_64/kodigui.exe
+          test -f dist/kodigui-windows-x86_64/Qt6Core.dll
+          test -d dist/kodigui-windows-x86_64/platforms
+          test -d dist/kodigui-windows-x86_64/QtWebEngineProcess
+
+      - name: Create archive and checksum
+        run: |
+          cd dist
+          7z a -tzip ../kodigui-windows-x86_64.zip kodigui-windows-x86_64
+          cd ..
+          sha256sum kodigui-windows-x86_64.zip > SHA256SUMS
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kodigui-windows-x86_64
+          path: |
+            kodigui-windows-x86_64.zip
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kodigui-windows-x86_64.zip
+            SHA256SUMS
+          generate_release_notes: true
