@@ -22,9 +22,9 @@ done
 # OpenWV uses Rust Edition 2024, which requires Cargo/Rust 1.85 or newer.
 # Prefer an installed rustup stable toolchain when the system Cargo is too old.
 CARGO_RUN="cargo"
-CARGO_VERSION=$(cargo --version | sed -E 's/^cargo ([0-9]+)\\.([0-9]+).*/\\1 \\2/')
-CARGO_MAJOR=$(printf '%s\\n' "$CARGO_VERSION" | awk '{print $1}')
-CARGO_MINOR=$(printf '%s\\n' "$CARGO_VERSION" | awk '{print $2}')
+CARGO_VERSION=$(cargo --version | sed -E 's/^cargo ([0-9]+)\.([0-9]+).*/\1 \2/')
+CARGO_MAJOR=$(printf '%s\n' "$CARGO_VERSION" | awk '{print $1}')
+CARGO_MINOR=$(printf '%s\n' "$CARGO_VERSION" | awk '{print $2}')
 if [ "$CARGO_MAJOR" -lt 1 ] || { [ "$CARGO_MAJOR" -eq 1 ] && [ "$CARGO_MINOR" -lt 85 ]; }; then
     if command -v rustup >/dev/null 2>&1 && rustup toolchain list | grep -q '^stable'; then
         echo "[OpenWV] System Cargo is too old; using the installed rustup stable toolchain."
