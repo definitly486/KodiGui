@@ -1,3 +1,14 @@
+#ifdef Q_OS_WIN
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#else
+#  include <sys/socket.h>
+#  include <netinet/in.h>
+#  include <arpa/inet.h>
+#  include <netdb.h>
+#  include <unistd.h>
+#endif
+
 #include "ui_kodigui.h"
 #include "mainwindow.h"
 #include <QDebug>
@@ -28,9 +39,11 @@
 #include <QMetaObject>
 #include <QTextEdit>
 #include <QScrollBar>
-#include <QSocketNotifier>
-#include <fcntl.h>
-#include <unistd.h>
+#ifndef Q_OS_WIN
+#  include <QSocketNotifier>
+#  include <fcntl.h>
+#  include <unistd.h>
+#endif
 #include <QCheckBox>
 #include <QStyle>
 #include <QIcon>
@@ -70,8 +83,6 @@ void runCommand(const QString &command, const QStringList &args = {});
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <netdb.h>
-#include <unistd.h>
 
 namespace {
 class OkkoMpdUrlInterceptor final : public QWebEngineUrlRequestInterceptor
@@ -510,6 +521,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(clearDrmLogButton, &QPushButton::clicked,
             okkoDrmLog, &QTextEdit::clear);
 
+#ifndef Q_OS_WIN
     // main.cpp redirects stdout/stderr to a non-blocking pipe. Consume it on
     // the GUI thread; suppress lines that contain actual DRM key material.
     bool okkoLogFdOk = false;
@@ -602,6 +614,10 @@ MainWindow::MainWindow(QWidget *parent)
         okkoDrmLog->append(
             QStringLiteral("Перехват stdout/stderr не активирован."));
     }
+
+#else
+    okkoDrmLog->append(QStringLiteral("Перехват stdout/stderr недоступен в Windows-сборке."));
+#endif
 
     ui->tabWidget->addTab(okkoContainer, QStringLiteral("okko.tv"));
 
@@ -1414,52 +1430,91 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
     const QString user = "pi";
     const QString password = "639639";
 
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) { qDebug() << "Socket error"; return false; }
+#ifdef Q_OS_WIN
+    const SOCKET sock = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == INVALID_SOCKET) {
+        qWarning() << "Socket error:" << WSAGetLastError();
+        return false;
+    }
+    const auto closeSocket = [sock]() { ::closesocket(sock); };
+#else
+    const int sock = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        qWarning() << "Socket error:" << errno;
+        return false;
+    }
+    const auto closeSocket = [sock]() { ::close(sock); };
+#endif
 
-    struct sockaddr_in sin{};
+    sockaddr_in sin{};
     sin.sin_family = AF_INET;
     sin.sin_port = htons(port);
-    struct hostent* he = gethostbyname(host.toUtf8().constData());
-    if (!he) { ::close(sock); return false; }
-    sin.sin_addr = *(struct in_addr*)he->h_addr;
+    hostent *he = ::gethostbyname(host.toUtf8().constData());
+    if (!he || !he->h_addr_list || !he->h_addr_list[0]) {
+        closeSocket();
+        return false;
+    }
+    std::memcpy(&sin.sin_addr, he->h_addr_list[0], sizeof(sin.sin_addr));
 
-    if (::connect(sock, (struct sockaddr*)&sin, sizeof(sin)) != 0) { ::close(sock); return false; }
-
-    LIBSSH2_SESSION* session = libssh2_session_init();
-    if (!session) { ::close(sock); return false; }
-    if (libssh2_session_handshake(session, sock)) { libssh2_session_free(session); ::close(sock); return false; }
-    if (libssh2_userauth_password(session, user.toUtf8().constData(), password.toUtf8().constData())) {
-        libssh2_session_disconnect(session, "Bye");
-        libssh2_session_free(session);
-        ::close(sock);
+    if (::connect(sock, reinterpret_cast<sockaddr *>(&sin), sizeof(sin)) != 0) {
+        closeSocket();
         return false;
     }
 
-    LIBSSH2_SFTP* sftp = libssh2_sftp_init(session);
-    if (!sftp) { libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return false; }
+    LIBSSH2_SESSION *session = libssh2_session_init();
+    if (!session) {
+        closeSocket();
+        return false;
+    }
+    if (libssh2_session_handshake(session, sock)) {
+        libssh2_session_free(session);
+        closeSocket();
+        return false;
+    }
+    if (libssh2_userauth_password(session, user.toUtf8().constData(),
+                                  password.toUtf8().constData())) {
+        libssh2_session_disconnect(session, "Bye");
+        libssh2_session_free(session);
+        closeSocket();
+        return false;
+    }
 
-    LIBSSH2_SFTP_HANDLE* sftpHandle = libssh2_sftp_open(sftp,
-        remoteFile.toUtf8().constData(),
+    LIBSSH2_SFTP *sftp = libssh2_sftp_init(session);
+    if (!sftp) {
+        libssh2_session_disconnect(session, "Bye");
+        libssh2_session_free(session);
+        closeSocket();
+        return false;
+    }
+
+    LIBSSH2_SFTP_HANDLE *sftpHandle = libssh2_sftp_open(
+        sftp, remoteFile.toUtf8().constData(),
         LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
         LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR |
         LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
 
-    if (!sftpHandle) { libssh2_sftp_shutdown(sftp); libssh2_session_disconnect(session, "Bye"); libssh2_session_free(session); ::close(sock); return false; }
+    if (!sftpHandle) {
+        libssh2_sftp_shutdown(sftp);
+        libssh2_session_disconnect(session, "Bye");
+        libssh2_session_free(session);
+        closeSocket();
+        return false;
+    }
 
     bool ok = false;
     QFile file(localPath);
     if (file.open(QIODevice::ReadOnly)) {
-        QByteArray data = file.readAll();
-        libssh2_sftp_write(sftpHandle, data.constData(), data.size());
-        ok = true;
+        const QByteArray data = file.readAll();
+        const ssize_t written = libssh2_sftp_write(
+            sftpHandle, data.constData(), static_cast<size_t>(data.size()));
+        ok = written == data.size();
     }
 
     libssh2_sftp_close(sftpHandle);
     libssh2_sftp_shutdown(sftp);
     libssh2_session_disconnect(session, "Bye");
     libssh2_session_free(session);
-    ::close(sock);
+    closeSocket();
 
     if (ok)
         qDebug() << "File uploaded successfully:" << remoteFile;
