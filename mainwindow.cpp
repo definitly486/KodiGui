@@ -1,4 +1,4 @@
-#ifdef Q_OS_WIN
+#ifdef _WIN32
 #  include <winsock2.h>
 #  include <ws2tcpip.h>
 #else
@@ -74,6 +74,8 @@
 #include <QSize>
 #include <atomic>
 #include <cstdlib>
+#include <cerrno>
+#include <cstring>
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 
