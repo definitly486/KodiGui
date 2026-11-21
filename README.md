@@ -125,7 +125,7 @@ Do not post diagnostic logs, screenshots, MPD URLs, account cookies, device file
 
 ## GitHub Actions
 
-The Windows workflow builds on pushes and pull requests targeting `feature/windows-support`, on `windows-v*` tags, and on manual dispatch. It uploads the `kodigui-windows-x86_64.zip` archive and SHA-256 checksum as a workflow artifact. Tag builds are also attached to the corresponding GitHub Release.
+The Windows workflow builds on pushes and pull requests targeting `feature/windows-support`, on `windows-v*` tags, and on manual dispatch. It uploads the `kodigui-windows-x86_64.zip` archive and SHA-256 checksum as a workflow artifact. Successful branch builds are also published as numbered GitHub preview releases; `windows-v*` tag builds are attached to their corresponding versioned GitHub Release.
 
 The Linux workflow builds on pushes and pull requests targeting `main`, on `v*` tags, and on manual dispatch. It uploads the `kodigui-linux-x86_64` archive and checksum as a workflow artifact. Tag builds are also attached to the corresponding GitHub Release.
 
