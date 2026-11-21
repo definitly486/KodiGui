@@ -29,16 +29,16 @@ The executable is created as `./kodigui`.
 
 ## Windows build
 
-Supported CI target: Windows 2022 x86_64 using the MSYS2 MinGW-w64 toolchain and Qt 6 (including Qt WebEngine).
+Supported CI target: Windows 2022 x86_64 using Microsoft Visual C++ 2022, Qt 6.8.3 and Qt WebEngine.
 
-Build locally from an MSYS2 MinGW 64-bit shell after installing the same packages as the workflow:
+For a local build, install the Qt 6.8.3 MSVC 2022 64-bit kit with the Qt WebEngine module, install Visual Studio 2022 C++ build tools, and install libssh2 with vcpkg:
 
-```bash
-pacman -S --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-webengine mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-libssh2 make pkgconf
-bash ./scripts/build-windows.sh
+```powershell
+vcpkg install libssh2:x64-windows
+./scripts/build-windows.ps1
 ```
 
-The executable is created as `./kodigui.exe`. The Windows workflow deploys Qt runtime files and packages a portable `kodigui-windows-x86_64.zip`. The archive does not contain Widevine, a `.wvd` device file, account cookies, or other credentials. Windows builds use Winsock for the libssh2 SFTP connection. The Linux-only POSIX stdout/stderr pipe integration is disabled on Windows; normal process diagnostics remain available.
+Make sure the vcpkg include and library directories are available through `INCLUDE` and `LIB` before running the script. The executable is created as `./kodigui.exe`. The Windows workflow deploys Qt runtime files and packages a portable `kodigui-windows-x86_64.zip`. The archive does not contain Widevine, a `.wvd` device file, account cookies, or other credentials. Windows builds use Winsock for the libssh2 SFTP connection. The Linux-only POSIX stdout/stderr pipe integration is disabled on Windows; normal process diagnostics remain available.
 
 ## Okko and Widevine DRM
 
