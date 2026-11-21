@@ -33,5 +33,11 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 RESOURCES += \
    resource.qrc
 
-LIBS += -L/usr/local/lib -lssh2
-INCLUDEPATH += /usr/local/include
+unix:!macx {
+    CONFIG += link_pkgconfig
+    PKGCONFIG += libssh2
+}
+
+win32 {
+    LIBS += -lssh2
+}
