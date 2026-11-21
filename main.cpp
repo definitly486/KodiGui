@@ -8,13 +8,18 @@
 #include <QFileInfo>
 #include <QDebug>
 #include <QByteArray>
-#include <fcntl.h>
-#include <unistd.h>
+#ifdef Q_OS_WIN
+#  include <winsock2.h>
+#else
+#  include <fcntl.h>
+#  include <unistd.h>
+#endif
 
 int main(int argc, char *argv[])
 {
     // Enable OpenWV's Rust diagnostics and capture process output for the Okko tab.
     qputenv("RUST_LOG", "info");
+#ifndef Q_OS_WIN
     int logPipe[2] = {-1, -1};
     if (::pipe(logPipe) == 0) {
         const int flags = ::fcntl(logPipe[0], F_GETFL, 0);
@@ -30,6 +35,17 @@ int main(int argc, char *argv[])
             ::close(logPipe[1]);
         }
     }
+#else
+    // Windows builds keep diagnostics on the normal process streams. The POSIX
+    // non-blocking pipe used by the embedded OpenWV log viewer is Linux-only.
+    qInfo() << "[OpenWV] stdout/stderr pipe capture is unavailable on Windows.";
+    WSADATA winsockData{};
+    const int winsockResult = WSAStartup(MAKEWORD(2, 2), &winsockData);
+    if (winsockResult != 0) {
+        qCritical() << "WSAStartup failed:" << winsockResult;
+        return EXIT_FAILURE;
+    }
+#endif
 
     qputenv("QTWEBENGINE_DISABLE_GPU", "1");
 
@@ -61,7 +77,9 @@ int main(int argc, char *argv[])
     }
 
     qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromiumFlags.toLocal8Bit());
+#ifndef Q_OS_WIN
     qputenv("QT_QPA_PLATFORM", "xcb");
+#endif
     qputenv("QT_DISABLE_VULKAN", "1");
     qputenv("QT_QUICK_BACKEND", "software");
 
@@ -80,5 +98,9 @@ int main(int argc, char *argv[])
     const int windowHeight = w.frameGeometry().height();
     w.move((screenWidth - windowWidth) / 2, (screenHeight - windowHeight) / 2);
 
-    return app.exec();
+    const int result = app.exec();
+#ifdef Q_OS_WIN
+    WSACleanup();
+#endif
+    return result;
 }
