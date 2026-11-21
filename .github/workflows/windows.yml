@@ -16,65 +16,73 @@ permissions:
 
 jobs:
   build-windows:
-    name: Build on Windows 2022 (MinGW-w64)
+    name: Build on Windows 2022 (MSVC)
     runs-on: windows-2022
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up MSYS2 MinGW-w64 and Qt 6
-        uses: msys2/setup-msys2@v2
+      - name: Configure MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-qt6-base
-            mingw-w64-x86_64-qt6-webengine
-            mingw-w64-x86_64-qt6-tools
-            mingw-w64-x86_64-libssh2
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-make
-            zip
+          arch: x64
+
+      - name: Install Qt 6.8.3 with Qt WebEngine
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtwebengine
+          cache: true
+
+      - name: Install libssh2
+        shell: pwsh
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $vcpkgRoot) { $vcpkgRoot = "C:\vcpkg" }
+          & "$vcpkgRoot\vcpkg.exe" install libssh2:x64-windows
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg failed to install libssh2" }
+          $prefix = Join-Path $vcpkgRoot "installed\x64-windows"
+          "INCLUDE=$prefix\include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LIB=$prefix\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "KODIGUI_VCPKG_BIN=$prefix\bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build KodiGui
-        run: bash ./scripts/build-windows.sh
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
 
-      - name: Deploy Qt runtime
+      - name: Deploy Qt and native runtime
+        shell: pwsh
         run: |
-          mkdir -p dist/kodigui-windows-x86_64
-          cp ./kodigui.exe dist/kodigui-windows-x86_64/
-          windeployqt --release --compiler-runtime --no-translations \
-            --dir dist/kodigui-windows-x86_64 \
-            dist/kodigui-windows-x86_64/kodigui.exe
-
-      - name: Bundle libssh2 runtime dependencies
-        run: |
-          for dll in libssh2-1.dll libcrypto-3-x64.dll zlib1.dll \
-                     libwinpthread-1.dll libgcc_s_seh-1.dll libstdc++-6.dll; do
-            if [[ -f "/mingw64/bin/${dll}" ]]; then
-              cp "/mingw64/bin/${dll}" dist/kodigui-windows-x86_64/
-            fi
-          done
-          cp README.md dist/kodigui-windows-x86_64/
-          cp LICENSE dist/kodigui-windows-x86_64/ 2>/dev/null || true
+          $dist = "dist/kodigui-windows-x86_64"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          Copy-Item .\kodigui.exe $dist
+          windeployqt --release --compiler-runtime --no-translations --dir $dist "$dist\kodigui.exe"
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt failed" }
+          Get-ChildItem "$env:KODIGUI_VCPKG_BIN" -Filter "*.dll" |
+            Where-Object { $_.Name -match "^(libssh2|libcrypto|libssl|zlib).*\.dll$" } |
+            Copy-Item -Destination $dist
+          Copy-Item README.md $dist
+          if (Test-Path LICENSE) { Copy-Item LICENSE $dist }
 
       - name: Verify portable package
+        shell: pwsh
         run: |
-          test -s dist/kodigui-windows-x86_64/kodigui.exe
-          test -f dist/kodigui-windows-x86_64/Qt6Core.dll
-          test -d dist/kodigui-windows-x86_64/platforms
-          test -d dist/kodigui-windows-x86_64/QtWebEngineProcess
+          $dist = "dist/kodigui-windows-x86_64"
+          if (-not (Test-Path "$dist\kodigui.exe")) { throw "Executable missing" }
+          if (-not (Test-Path "$dist\Qt6Core.dll")) { throw "Qt runtime missing" }
+          if (-not (Test-Path "$dist\platforms\qwindows.dll")) { throw "Windows platform plugin missing" }
+          if (-not (Test-Path "$dist\QtWebEngineProcess.exe")) { throw "Qt WebEngine helper missing" }
+          if (-not (Test-Path "$dist\resources\icudtl.dat")) { throw "Qt WebEngine resources missing" }
 
       - name: Create archive and checksum
+        shell: pwsh
         run: |
-          cd dist
-          7z a -tzip ../kodigui-windows-x86_64.zip kodigui-windows-x86_64
-          cd ..
-          sha256sum kodigui-windows-x86_64.zip > SHA256SUMS
+          Compress-Archive -Path "dist/kodigui-windows-x86_64" -DestinationPath "kodigui-windows-x86_64.zip" -Force
+          $hash = (Get-FileHash "kodigui-windows-x86_64.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  kodigui-windows-x86_64.zip" | Set-Content SHA256SUMS -Encoding ascii
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
