@@ -33,7 +33,7 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 RESOURCES += \
    resource.qrc
 
-unix:!macx {
+unix {
     CONFIG += link_pkgconfig
     PKGCONFIG += libssh2
 }
