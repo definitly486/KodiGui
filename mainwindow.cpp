@@ -1507,9 +1507,16 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
     QFile file(localPath);
     if (file.open(QIODevice::ReadOnly)) {
         const QByteArray data = file.readAll();
-        const ssize_t written = libssh2_sftp_write(
-            sftpHandle, data.constData(), static_cast<size_t>(data.size()));
-        ok = written == data.size();
+        qsizetype offset = 0;
+        while (offset < data.size()) {
+            const auto written = libssh2_sftp_write(
+                sftpHandle, data.constData() + offset,
+                static_cast<size_t>(data.size() - offset));
+            if (written <= 0)
+                break;
+            offset += static_cast<qsizetype>(written);
+        }
+        ok = offset == data.size();
     }
 
     libssh2_sftp_close(sftpHandle);
