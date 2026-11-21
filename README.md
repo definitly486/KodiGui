@@ -9,7 +9,7 @@ Supported CI target: Ubuntu 24.04 x86_64. The project uses Qt 6 Widgets, Qt WebE
 Install build dependencies:
 
 ```bash
-sudo ./scripts/install-linux-deps.sh
+sudo bash ./scripts/install-linux-deps.sh
 ```
 
 Or install them manually:
@@ -22,7 +22,7 @@ sudo apt-get install -y build-essential pkg-config qt6-base-dev qt6-webengine-de
 Build:
 
 ```bash
-./scripts/build-linux.sh
+bash ./scripts/build-linux.sh
 ```
 
 The executable is created as `./kodigui`.
