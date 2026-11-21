@@ -34,7 +34,7 @@ jobs:
             libssh2-1-dev
 
       - name: Build KodiGui
-        run: ./scripts/build-linux.sh
+        run: bash ./scripts/build-linux.sh
 
       - name: Check executable dependencies
         run: |
