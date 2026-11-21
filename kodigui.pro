@@ -39,5 +39,5 @@ unix {
 }
 
 win32 {
-    LIBS += -lssh2
+    LIBS += -lssh2 -lws2_32
 }
