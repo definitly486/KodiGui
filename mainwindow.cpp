@@ -1925,17 +1925,6 @@ void MainWindow::on_playYoutubeFileButton_clicked()
 }
 
 
-void runCommand(const QString &command, const QStringList &args) {
-    // Неблокирующий запуск: UI не замирает
-    const bool ok = QProcess::startDetached(command, args);
-    if (!ok) {
-        qWarning() << "Не удалось запустить:" << command << args;
-    } else {
-        qDebug() << "Команда запущена (detached):" << command << args;
-    }
-}
-
-
 namespace {
 QString executeSshWithLibssh2(const QString &remoteCommand)
 {
