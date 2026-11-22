@@ -78,9 +78,32 @@ jobs:
           Copy-Item -LiteralPath $exe -Destination $dist
           windeployqt --release --compiler-runtime --no-translations --dir $dist "$dist\kodigui.exe"
           if ($LASTEXITCODE -ne 0) { throw "windeployqt failed" }
-          Get-ChildItem "$env:KODIGUI_VCPKG_BIN" -Filter "*.dll" |
-            Where-Object { $_.Name -match "^(libssh2|libcrypto|libssl|zlib).*\.dll$" } |
-            Copy-Item -Destination $dist
+          # Include every runtime DLL installed by vcpkg. libssh2 may have
+          # transitive dependencies that are not named libssh2/libcrypto.
+          Get-ChildItem -LiteralPath "$env:KODIGUI_VCPKG_BIN" -Filter "*.dll" -File |
+            Copy-Item -Destination $dist -Force
+
+          # Qt WebEngine and its bundled third-party libraries may depend on
+          # libz.dll. windeployqt does not always collect non-Qt DLLs, so locate
+          # and package the exact runtime explicitly.
+          $runtimeRoots = @(
+            $env:QT_ROOT_DIR,
+            (Split-Path -Parent $env:Qt6_DIR),
+            (Split-Path -Parent $env:Qt6_DIR | Split-Path -Parent),
+            (Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\x64-windows")
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+          $libz = $null
+          foreach ($runtimeRoot in $runtimeRoots) {
+            $libz = Get-ChildItem -LiteralPath $runtimeRoot -Filter "libz.dll" -File -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            if ($libz) { break }
+          }
+          if ($libz) {
+            Write-Host "[KodiGui] Packaging libz runtime: $($libz.FullName)"
+            Copy-Item -LiteralPath $libz.FullName -Destination $dist -Force
+          } else {
+            Write-Warning "libz.dll was not found under Qt/vcpkg runtime roots; dependency verification will report whether it is required."
+          }
           Copy-Item README.md $dist
           if (Test-Path LICENSE) { Copy-Item LICENSE $dist }
 
@@ -93,6 +116,10 @@ jobs:
           if (-not (Test-Path "$dist\platforms\qwindows.dll")) { throw "Windows platform plugin missing" }
           if (-not (Test-Path "$dist\QtWebEngineProcess.exe")) { throw "Qt WebEngine helper missing" }
           if (-not (Test-Path "$dist\resources\icudtl.dat")) { throw "Qt WebEngine resources missing" }
+          # Keep the explicitly reported runtime dependency in the portable package.
+          if (-not (Test-Path "$dist\libz.dll")) {
+            Write-Warning "libz.dll was not found in the package. Check the executable/plugin imports if this build does not require it."
+          }
 
       - name: Create archive and checksum
         shell: pwsh
