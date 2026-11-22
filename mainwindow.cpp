@@ -8,6 +8,11 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QNetworkReply>
+#include <memory>
+#include <mutex>
+#include <QCoreApplication>
+#include <QFutureWatcher>
+#include <QTcpSocket>
 #include "playerwindow.h"
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -64,9 +69,10 @@
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 
-// Выполняет внешнюю команду (используется для "ssh pi@... <cmd>").
-// Определена ниже в файле; объявлена здесь, т.к. используется раньше.
-void runCommand(const QString &command, const QStringList &args = {});
+// Выполняет SSH-команду через встроенный libssh2-клиент.
+// Системный ssh и пользовательский ~/.ssh/config не используются.
+void runCommand(const QString &command, const QStringList &args = {},
+                std::function<void(const QString &)> onFinished = {});
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -108,6 +114,14 @@ private:
     QObject *m_context;
     std::function<void(const QString &)> m_callback;
 };
+
+bool ensureLibssh2Initialized()
+{
+    static std::once_flag initFlag;
+    static int initResult = LIBSSH2_ERROR_INVAL;
+    std::call_once(initFlag, []() { initResult = libssh2_init(0); });
+    return initResult == 0;
+}
 
 QPointer<QTextEdit> debugOutput;
 std::atomic_bool debugOutputEnabled{true};
@@ -183,7 +197,6 @@ MainWindow::MainWindow(QWidget *parent)
     ui->drmLayout->insertLayout(2, drmProcessStatusLayout);
 
     auto *drmProcessStatusTimer = new QTimer(this);
-    auto *drmProcessStatusProcess = new QProcess(this);
     drmProcessStatusTimer->setInterval(2500);
 
     auto setDrmProcessStatus = [](QLabel *label, const QString &name, bool running) {
@@ -195,57 +208,51 @@ MainWindow::MainWindow(QWidget *parent)
             : QStringLiteral("font-weight: 600; color: #d45b5b;"));
     };
 
-    connect(drmProcessStatusProcess,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
-        if (exitStatus != QProcess::NormalExit || exitCode != 0) {
-            const QString unavailable = QStringLiteral("нет связи");
-            for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
-                                  ffmpegStatusLabel, nM3u8StatusLabel}) {
-                label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
-                               + QStringLiteral(": ") + unavailable);
-                label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
-            }
-            return;
-        }
-
-        const QString output = QString::fromUtf8(
-            drmProcessStatusProcess->readAllStandardOutput()).trimmed();
-        setDrmProcessStatus(ytDlpStatusLabel, QStringLiteral("yt-dlp"),
-                            output.contains(QStringLiteral("yt-dlp=1")));
-        setDrmProcessStatus(streamlinkStatusLabel, QStringLiteral("streamlink"),
-                            output.contains(QStringLiteral("streamlink=1")));
-        setDrmProcessStatus(ffmpegStatusLabel, QStringLiteral("ffmpeg"),
-                            output.contains(QStringLiteral("ffmpeg=1")));
-        setDrmProcessStatus(nM3u8StatusLabel, QStringLiteral("N_m3u8DL-+"),
-                            output.contains(QStringLiteral("N_m3u8DL-+=1")));
-    });
-
-    connect(drmProcessStatusProcess, &QProcess::errorOccurred, this,
-            [=](QProcess::ProcessError) {
+    auto drmStatusRequestInProgress = std::make_shared<bool>(false);
+    auto setDrmConnectionUnavailable = [=]() {
         for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
                               ffmpegStatusLabel, nM3u8StatusLabel}) {
             label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
                            + QStringLiteral(": нет связи"));
             label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
         }
-    });
+    };
 
     auto checkDrmProcesses = [=]() {
-        if (drmProcessStatusProcess->state() != QProcess::NotRunning)
+        if (*drmStatusRequestInProgress)
             return;
-        drmProcessStatusProcess->start(QStringLiteral("ssh"), {
-            QStringLiteral("pi@192.168.8.45"),
-            QStringLiteral("for name in yt-dlp streamlink ffmpeg N_m3u8DL-+; do "
-                           "pattern=$name; case $name in N_m3u8DL-+) pattern=N_m3u8DL ;; esac; "
-                           "found=0; "
-                           "for file in /proc/[0-9]*/cmdline; do "
-                           "pid=${file#/proc/}; pid=${pid%/cmdline}; "
-                           "[ $pid = $$ ] && continue; "
-                           "[ $pid = $PPID ] && continue; "
-                           "cmd=$(tr '\\000' ' ' < $file 2>/dev/null) || continue; "
-                           "case $cmd in *$pattern*) found=1; break ;; esac; "
-                           "done; echo $name=$found; done")
+        *drmStatusRequestInProgress = true;
+        const QString remoteCommand =
+            "for name in yt-dlp streamlink ffmpeg N_m3u8DL-+; do "
+            "pattern=$name; case $name in N_m3u8DL-+) pattern=N_m3u8DL ;; esac; "
+            "found=0; "
+            "for file in /proc/[0-9]*/cmdline; do "
+            "pid=${file#/proc/}; pid=${pid%/cmdline}; "
+            "[ $pid = $$ ] && continue; "
+            "[ $pid = $PPID ] && continue; "
+            "cmd=$(tr '\\000' ' ' < $file 2>/dev/null) || continue; "
+            "case $cmd in *$pattern*) found=1; break ;; esac; "
+            "done; echo $name=$found; done";
+        runCommand(QStringLiteral("ssh"), {remoteCommand},
+                   [=](const QString &output) {
+            *drmStatusRequestInProgress = false;
+            if (output.startsWith(QStringLiteral("SSH connection failed")) ||
+                output.startsWith(QStringLiteral("SSH authentication failed")) ||
+                output.startsWith(QStringLiteral("SSH handshake failed")) ||
+                output.startsWith(QStringLiteral("SSH command start failed")) ||
+                output.startsWith(QStringLiteral("libssh2"))) {
+                setDrmConnectionUnavailable();
+                return;
+            }
+            const QString result = output.trimmed();
+            setDrmProcessStatus(ytDlpStatusLabel, QStringLiteral("yt-dlp"),
+                                result.contains(QStringLiteral("yt-dlp=1")));
+            setDrmProcessStatus(streamlinkStatusLabel, QStringLiteral("streamlink"),
+                                result.contains(QStringLiteral("streamlink=1")));
+            setDrmProcessStatus(ffmpegStatusLabel, QStringLiteral("ffmpeg"),
+                                result.contains(QStringLiteral("ffmpeg=1")));
+            setDrmProcessStatus(nM3u8StatusLabel, QStringLiteral("N_m3u8DL-+"),
+                                result.contains(QStringLiteral("N_m3u8DL-+=1")));
         });
     };
     connect(drmProcessStatusTimer, &QTimer::timeout, this, checkDrmProcesses);
@@ -256,8 +263,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (index == drmPageIndex) {
             if (!drmProcessStatusTimer->isActive()) {
                 drmProcessStatusTimer->start();
-                if (drmProcessStatusProcess->state() == QProcess::NotRunning)
-                    checkDrmProcesses();
+                checkDrmProcesses();
             }
         } else {
             drmProcessStatusTimer->stop();
@@ -302,7 +308,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
 
         auto *youtubeStatusTimer = new QTimer(this);
-        auto *youtubeStatusProcess = new QProcess(this);
+        auto youtubeStatusRequestInProgress = std::make_shared<bool>(false);
         youtubeStatusTimer->setInterval(2500);
 
         auto setYoutubeProcessStatus = [](QLabel *label, const QString &name, bool running) {
@@ -323,36 +329,33 @@ MainWindow::MainWindow(QWidget *parent)
             }
         };
 
-        connect(youtubeStatusProcess,
-                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
-            if (exitStatus != QProcess::NormalExit || exitCode != 0) {
-                setYoutubeConnectionUnavailable();
-                return;
-            }
-
-            const QString output = QString::fromUtf8(
-                youtubeStatusProcess->readAllStandardOutput()).trimmed();
-            setYoutubeProcessStatus(youtubeYtDlpStatusLabel, QStringLiteral("yt-dlp"),
-                                    output.contains(QStringLiteral("yt-dlp=1")));
-            setYoutubeProcessStatus(youtubeStreamlinkStatusLabel, QStringLiteral("streamlink"),
-                                    output.contains(QStringLiteral("streamlink=1")));
-            setYoutubeProcessStatus(youtubeFfmpegStatusLabel, QStringLiteral("ffmpeg"),
-                                    output.contains(QStringLiteral("ffmpeg=1")));
-        });
-
-        connect(youtubeStatusProcess, &QProcess::errorOccurred, this,
-                [=](QProcess::ProcessError) { setYoutubeConnectionUnavailable(); });
-
         auto checkYoutubeProcesses = [=]() {
-            if (youtubeStatusProcess->state() != QProcess::NotRunning)
+            if (*youtubeStatusRequestInProgress)
                 return;
-            youtubeStatusProcess->start(QStringLiteral("ssh"), {
-                QStringLiteral("pi@192.168.8.45"),
-                QStringLiteral("for name in yt-dlp streamlink ffmpeg; do "
-                               "ps -eo comm= | awk -v n=$name "
-                               "'$1 == n {found=1} END {print n \"=\" (found ? 1 : 0)}'; "
-                               "done")
+            *youtubeStatusRequestInProgress = true;
+            const QString remoteCommand =
+                "for name in yt-dlp streamlink ffmpeg; do "
+                "ps -eo comm= | awk -v n=$name "
+                "'$1 == n {found=1} END {print n \"=\" (found ? 1 : 0)}'; "
+                "done";
+            runCommand(QStringLiteral("ssh"), {remoteCommand},
+                       [=](const QString &output) {
+                *youtubeStatusRequestInProgress = false;
+                if (output.startsWith(QStringLiteral("SSH connection failed")) ||
+                    output.startsWith(QStringLiteral("SSH authentication failed")) ||
+                    output.startsWith(QStringLiteral("SSH handshake failed")) ||
+                    output.startsWith(QStringLiteral("SSH command start failed")) ||
+                    output.startsWith(QStringLiteral("libssh2"))) {
+                    setYoutubeConnectionUnavailable();
+                    return;
+                }
+                const QString result = output.trimmed();
+                setYoutubeProcessStatus(youtubeYtDlpStatusLabel, QStringLiteral("yt-dlp"),
+                                        result.contains(QStringLiteral("yt-dlp=1")));
+                setYoutubeProcessStatus(youtubeStreamlinkStatusLabel, QStringLiteral("streamlink"),
+                                        result.contains(QStringLiteral("streamlink=1")));
+                setYoutubeProcessStatus(youtubeFfmpegStatusLabel, QStringLiteral("ffmpeg"),
+                                        result.contains(QStringLiteral("ffmpeg=1")));
             });
         };
 
@@ -363,8 +366,7 @@ MainWindow::MainWindow(QWidget *parent)
             if (index == youtubePageIndex) {
                 if (!youtubeStatusTimer->isActive()) {
                     youtubeStatusTimer->start();
-                    if (youtubeStatusProcess->state() == QProcess::NotRunning)
-                        checkYoutubeProcesses();
+                    checkYoutubeProcesses();
                 }
             } else {
                 youtubeStatusTimer->stop();
@@ -1010,6 +1012,118 @@ MainWindow::MainWindow(QWidget *parent)
         QStringLiteral("okko/showMpdUrl"), true).toBool();
     okkoMpdUrlCheckBox->setChecked(showOkkoMpdUrl);
     settingsLayout->addWidget(okkoMpdUrlCheckBox);
+
+    // SSH connection settings. Remote commands use the in-process libssh2 client.
+    auto *sshTitle = new QLabel(QStringLiteral("SSH-подключение"), settingsPage);
+    QFont sshFont = sshTitle->font();
+    sshFont.setPointSize(14);
+    sshFont.setBold(true);
+    sshTitle->setFont(sshFont);
+    settingsLayout->addWidget(sshTitle);
+
+    auto *sshForm = new QFormLayout();
+    auto *sshHostEdit = new QLineEdit(settingsPage);
+    sshHostEdit->setObjectName(QStringLiteral("sshHostEdit"));
+    sshHostEdit->setPlaceholderText(QStringLiteral("192.168.8.45"));
+    sshHostEdit->setText(themeSettings->value(QStringLiteral("ssh/host"),
+                                               QStringLiteral("192.168.8.45")).toString());
+    sshForm->addRow(QStringLiteral("Адрес:"), sshHostEdit);
+
+    auto *sshPortEdit = new QLineEdit(settingsPage);
+    sshPortEdit->setObjectName(QStringLiteral("sshPortEdit"));
+    sshPortEdit->setText(themeSettings->value(QStringLiteral("ssh/port"), 22).toString());
+    sshForm->addRow(QStringLiteral("Порт:"), sshPortEdit);
+
+    auto *sshUserEdit = new QLineEdit(settingsPage);
+    sshUserEdit->setObjectName(QStringLiteral("sshUserEdit"));
+    sshUserEdit->setText(themeSettings->value(QStringLiteral("ssh/user"),
+                                               QStringLiteral("pi")).toString());
+    sshForm->addRow(QStringLiteral("Пользователь:"), sshUserEdit);
+
+    auto *sshPasswordEdit = new QLineEdit(settingsPage);
+    sshPasswordEdit->setObjectName(QStringLiteral("sshPasswordEdit"));
+    sshPasswordEdit->setEchoMode(QLineEdit::Password);
+    sshPasswordEdit->setText(themeSettings->value(QStringLiteral("ssh/password"),
+                                                    QStringLiteral("639639")).toString());
+    sshForm->addRow(QStringLiteral("Пароль:"), sshPasswordEdit);
+
+    auto *sshKeyEdit = new QLineEdit(settingsPage);
+    sshKeyEdit->setObjectName(QStringLiteral("sshPrivateKeyEdit"));
+    sshKeyEdit->setPlaceholderText(QStringLiteral("Путь к приватному ключу (необязательно)"));
+    sshKeyEdit->setText(themeSettings->value(QStringLiteral("ssh/privateKey")).toString());
+    sshForm->addRow(QStringLiteral("SSH-ключ:"), sshKeyEdit);
+
+    auto *sshKeyPassphraseEdit = new QLineEdit(settingsPage);
+    sshKeyPassphraseEdit->setObjectName(QStringLiteral("sshKeyPassphraseEdit"));
+    sshKeyPassphraseEdit->setEchoMode(QLineEdit::Password);
+    sshKeyPassphraseEdit->setText(themeSettings->value(QStringLiteral("ssh/keyPassphrase")).toString());
+    sshForm->addRow(QStringLiteral("Пароль SSH-ключа:"), sshKeyPassphraseEdit);
+    settingsLayout->addLayout(sshForm);
+
+    auto *sshButtonsLayout = new QHBoxLayout();
+    auto *sshSaveButton = new QPushButton(QStringLiteral("Сохранить SSH-настройки"), settingsPage);
+    sshSaveButton->setObjectName(QStringLiteral("saveSshSettingsButton"));
+    auto *sshTestButton = new QPushButton(QStringLiteral("Проверить подключение"), settingsPage);
+    sshTestButton->setObjectName(QStringLiteral("testSshConnectionButton"));
+    sshButtonsLayout->addWidget(sshSaveButton);
+    sshButtonsLayout->addWidget(sshTestButton);
+    settingsLayout->addLayout(sshButtonsLayout);
+    auto *sshHint = new QLabel(
+        QStringLiteral("Команды выполняются встроенным libssh2. Системные ssh и sshpass не требуются. "
+                       "Пароль сохраняется в пользовательских настройках приложения."),
+        settingsPage);
+    sshHint->setWordWrap(true);
+    settingsLayout->addWidget(sshHint);
+
+    connect(sshTestButton, &QPushButton::clicked, this,
+            [this, themeSettings, sshHostEdit, sshPortEdit, sshUserEdit, sshPasswordEdit, sshKeyEdit, sshKeyPassphraseEdit]() {
+        bool portOk = false;
+        const int port = sshPortEdit->text().trimmed().toInt(&portOk);
+        if (sshHostEdit->text().trimmed().isEmpty() ||
+            sshUserEdit->text().trimmed().isEmpty() || !portOk || port < 1 || port > 65535) {
+            QMessageBox::warning(this, QStringLiteral("SSH"),
+                                 QStringLiteral("Проверьте адрес, пользователя и порт SSH (1–65535)."));
+            return;
+        }
+        themeSettings->setValue(QStringLiteral("ssh/host"), sshHostEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/port"), port);
+        themeSettings->setValue(QStringLiteral("ssh/user"), sshUserEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/password"), sshPasswordEdit->text());
+        themeSettings->setValue(QStringLiteral("ssh/privateKey"), sshKeyEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/keyPassphrase"), sshKeyPassphraseEdit->text());
+        themeSettings->sync();
+        runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"), QStringLiteral("printf 'KODIGUI_SSH_OK\\n'")},
+                   [this](const QString &output) {
+            if (output.contains(QStringLiteral("KODIGUI_SSH_OK")))
+                QMessageBox::information(this, QStringLiteral("SSH"),
+                                         QStringLiteral("SSH-подключение успешно."));
+            else
+                QMessageBox::warning(this, QStringLiteral("SSH"),
+                                     QStringLiteral("Не удалось выполнить SSH-команду:\n") + output);
+        });
+    });
+
+    connect(sshSaveButton, &QPushButton::clicked, this,
+            [themeSettings, sshHostEdit, sshPortEdit, sshUserEdit, sshPasswordEdit, sshKeyEdit, sshKeyPassphraseEdit]() {
+        bool portOk = false;
+        const int port = sshPortEdit->text().trimmed().toInt(&portOk);
+        if (sshHostEdit->text().trimmed().isEmpty() ||
+            sshUserEdit->text().trimmed().isEmpty() || !portOk || port < 1 || port > 65535) {
+            QMessageBox::warning(nullptr, QStringLiteral("SSH"),
+                                 QStringLiteral("Проверьте адрес, пользователя и порт SSH (1–65535)."));
+            return;
+        }
+        themeSettings->setValue(QStringLiteral("ssh/host"), sshHostEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/port"), port);
+        themeSettings->setValue(QStringLiteral("ssh/user"), sshUserEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/password"), sshPasswordEdit->text());
+        themeSettings->setValue(QStringLiteral("ssh/privateKey"), sshKeyEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/keyPassphrase"), sshKeyPassphraseEdit->text());
+        themeSettings->sync();
+        QMessageBox::information(nullptr, QStringLiteral("SSH"),
+                                 QStringLiteral("SSH-настройки сохранены."));
+    });
+
 
     settingsLayout->addStretch(1);
     ui->tabWidget->addTab(settingsPage, style()->standardIcon(QStyle::SP_DesktopIcon),
@@ -1786,14 +1900,122 @@ void MainWindow::on_playYoutubeFileButton_clicked()
 }
 
 
-void runCommand(const QString &command, const QStringList &args) {
-    // Неблокирующий запуск: UI не замирает
-    const bool ok = QProcess::startDetached(command, args);
-    if (!ok) {
-        qWarning() << "Не удалось запустить:" << command << args;
+namespace {
+QString executeSshWithLibssh2(const QString &remoteCommand)
+{
+    QSettings settings(QStringLiteral("definitly486"), QStringLiteral("KodiGui"));
+    const QString host = settings.value(QStringLiteral("ssh/host"), QStringLiteral("192.168.8.45")).toString();
+    const int port = settings.value(QStringLiteral("ssh/port"), 22).toInt();
+    const QString user = settings.value(QStringLiteral("ssh/user"), QStringLiteral("pi")).toString();
+    const QString password = settings.value(QStringLiteral("ssh/password"), QStringLiteral("639639")).toString();
+    const QString privateKey = settings.value(QStringLiteral("ssh/privateKey")).toString();
+    const QString keyPassphrase = settings.value(QStringLiteral("ssh/keyPassphrase")).toString();
+
+    if (!ensureLibssh2Initialized())
+        return QStringLiteral("libssh2 initialization failed");
+
+    QTcpSocket socket;
+    socket.connectToHost(host, static_cast<quint16>(port));
+    if (!socket.waitForConnected(10000))
+        return QStringLiteral("SSH connection failed: %1").arg(socket.errorString());
+
+    LIBSSH2_SESSION *session = libssh2_session_init();
+    if (!session)
+        return QStringLiteral("libssh2: cannot create session");
+    libssh2_session_set_blocking(session, 1);
+    libssh2_session_set_timeout(session, 15000);
+
+    QString error;
+    const auto lastSessionError = [session]() {
+        char *message = nullptr;
+        int length = 0;
+        libssh2_session_last_error(session, &message, &length, 0);
+        return QString::fromUtf8(message ? message : "unknown error", length);
+    };
+    const auto socketHandle = static_cast<libssh2_socket_t>(socket.socketDescriptor());
+    if (libssh2_session_handshake(session, socketHandle) != 0) {
+        error = QStringLiteral("SSH handshake failed: %1")
+                    .arg(lastSessionError());
     } else {
-        qDebug() << "Команда запущена (detached):" << command << args;
+        int authResult = -1;
+        if (!privateKey.isEmpty()) {
+            authResult = libssh2_userauth_publickey_fromfile(
+                session, user.toUtf8().constData(), nullptr,
+                QFile::encodeName(privateKey).constData(),
+                keyPassphrase.toUtf8().constData());
+        } else if (!password.isEmpty()) {
+            authResult = libssh2_userauth_password(
+                session, user.toUtf8().constData(), password.toUtf8().constData());
+        }
+        if (authResult != 0) {
+            error = QStringLiteral("SSH authentication failed: %1")
+                        .arg(lastSessionError());
+        }
     }
+
+    LIBSSH2_CHANNEL *channel = nullptr;
+    QByteArray output;
+    if (error.isEmpty()) {
+        channel = libssh2_channel_open_session(session);
+        if (!channel || libssh2_channel_exec(channel, remoteCommand.toUtf8().constData()) != 0) {
+            error = QStringLiteral("SSH command start failed: %1")
+                        .arg(lastSessionError());
+        } else {
+            libssh2_channel_handle_extended_data(channel, LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE);
+            char buffer[8192];
+            for (;;) {
+                const auto count = libssh2_channel_read(channel, buffer, sizeof(buffer));
+                if (count > 0) {
+                    output.append(buffer, static_cast<qsizetype>(count));
+                    continue;
+                }
+                if (count == LIBSSH2_ERROR_EAGAIN)
+                    continue;
+                break;
+            }
+            libssh2_channel_close(channel);
+            libssh2_channel_free(channel);
+        }
+    }
+
+    libssh2_session_disconnect(session, "KodiGui closing");
+    libssh2_session_free(session);
+    socket.disconnectFromHost();
+    if (!error.isEmpty())
+        return error;
+    return QString::fromUtf8(output);
+}
+} // namespace
+
+void runCommand(const QString &command, const QStringList &args,
+                std::function<void(const QString &)> onFinished)
+{
+    if (command.compare(QStringLiteral("ssh"), Qt::CaseInsensitive) != 0) {
+        qWarning() << "External command is not allowed through the SSH runner:" << command;
+        return;
+    }
+
+    QStringList remoteArgs = args;
+    if (!remoteArgs.isEmpty() && remoteArgs.first().contains(QLatin1Char('@')))
+        remoteArgs.removeFirst();
+    if (remoteArgs.isEmpty()) {
+        qWarning() << "SSH command is empty";
+        return;
+    }
+    const QString remoteCommand = remoteArgs.join(QLatin1Char(' '));
+    auto *watcher = new QFutureWatcher<QString>(QCoreApplication::instance());
+    QObject::connect(watcher, &QFutureWatcher<QString>::finished, watcher,
+                     [watcher, onFinished = std::move(onFinished)]() {
+        const QString output = watcher->result();
+        if (!output.trimmed().isEmpty())
+            qInfo().noquote() << "[SSH]" << output.trimmed();
+        if (onFinished)
+            onFinished(output);
+        watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run([remoteCommand]() {
+        return executeSshWithLibssh2(remoteCommand);
+    }));
 }
 
 
@@ -2761,42 +2983,12 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
     // Проверяем появление непустого drm.mp4 и состояние группы сборщика.
     if (drmFileCheckTimer)
         drmFileCheckTimer->stop();
-    if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning)
-        drmFileCheckProcess->kill();
-
-    if (!drmFileCheckProcess) {
-        drmFileCheckProcess = new QProcess(this);
-        connect(drmFileCheckProcess,
-                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [this](int exitCode, QProcess::ExitStatus) {
-            const QString output =
-                QString::fromUtf8(drmFileCheckProcess->readAllStandardOutput());
-            if (!output.isEmpty())
-                qInfo().noquote() << "[DRM remote check]" << output.trimmed();
-            qInfo() << "DRM remote check finished; exitCode=" << exitCode;
-
-            if (exitCode == 0 && output.contains("DRM_HLS_READY")) {
-                if (drmFileCheckTimer)
-                    drmFileCheckTimer->stop();
-                QMessageBox::information(this, "DRM",
-                    "HLS-плейлист опубликован.\n"
-                    "Нажмите Play — Kodi откроет поток один раз\n"
-                    "и будет получать новые сегменты по мере загрузки.");
-            } else if (output.contains("DRM_MUX_FAILED")) {
-                if (drmFileCheckTimer)
-                    drmFileCheckTimer->stop();
-                QMessageBox::warning(this, "DRM",
-                    "Публикатор HLS завершился до создания плейлиста.\n\n"
-                    "Последние строки журнала:\n" + output);
-            }
-        });
-    }
 
     if (!drmFileCheckTimer) {
         drmFileCheckTimer = new QTimer(this);
         drmFileCheckTimer->setInterval(1500);
         connect(drmFileCheckTimer, &QTimer::timeout, this, [this, runId, shellQuote]() {
-            if (drmFileCheckProcess->state() != QProcess::NotRunning)
+            if (drmFileCheckRunning)
                 return;
 
             // Ограничиваем ожидание, чтобы при ошибке SSH/загрузчика не проверять бесконечно.
@@ -2810,7 +3002,8 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
             {
                 qInfo() << "Checking remote DRM output and assembler status";
-                drmFileCheckProcess->start("ssh", {
+                drmFileCheckRunning = true;
+                runCommand("ssh", {
                     "pi@192.168.8.45",
                     "if [ -s \"$HOME/kodigui/drm/hls/.run-id\" ] && "
                     "   [ \"$(cat \"$HOME/kodigui/drm/hls/.run-id\" 2>/dev/null)\" = " + shellQuote(runId) + " ]; then "
@@ -2828,6 +3021,19 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                     "    fi; "
                     "  fi; "
                     "fi"
+                }, [this](const QString &output) {
+                    drmFileCheckRunning = false;
+                    if (output.contains(QStringLiteral("DRM_HLS_READY"))) {
+                        if (drmFileCheckTimer)
+                            drmFileCheckTimer->stop();
+                        QMessageBox::information(this, "DRM",
+                            "HLS-плейлист опубликован.\nНажмите Play — Kodi откроет поток один раз\nи будет получать новые сегменты по мере загрузки.");
+                    } else if (output.contains(QStringLiteral("DRM_MUX_FAILED"))) {
+                        if (drmFileCheckTimer)
+                            drmFileCheckTimer->stop();
+                        QMessageBox::warning(this, "DRM",
+                            "Публикатор HLS завершился до создания плейлиста.\n\nПоследние строки журнала:\n" + output);
+                    }
                 });
             }
         });
@@ -3153,42 +3359,12 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
     // Проверяем появление непустого drm.mp4 и состояние группы сборщика.
     if (drmLegacyFileCheckTimer)
         drmLegacyFileCheckTimer->stop();
-    if (drmLegacyFileCheckProcess && drmLegacyFileCheckProcess->state() != QProcess::NotRunning)
-        drmLegacyFileCheckProcess->kill();
-
-    if (!drmLegacyFileCheckProcess) {
-        drmLegacyFileCheckProcess = new QProcess(this);
-        connect(drmLegacyFileCheckProcess,
-                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [this](int exitCode, QProcess::ExitStatus) {
-            const QString output =
-                QString::fromUtf8(drmLegacyFileCheckProcess->readAllStandardOutput());
-            if (!output.isEmpty())
-                qInfo().noquote() << "[DRM remote check]" << output.trimmed();
-            qInfo() << "DRM remote check finished; exitCode=" << exitCode;
-
-            if (exitCode == 0 && output.contains("DRM_HLS_READY")) {
-                if (drmLegacyFileCheckTimer)
-                    drmLegacyFileCheckTimer->stop();
-                QMessageBox::information(this, "DRM",
-                    "Новый динамический HLS-плейлист опубликован.\n"
-                    "Нажмите Play — Kodi откроет поток один раз\n"
-                    "и будет получать новые сегменты по мере загрузки.");
-            } else if (output.contains("DRM_MUX_FAILED")) {
-                if (drmLegacyFileCheckTimer)
-                    drmLegacyFileCheckTimer->stop();
-                QMessageBox::warning(this, "DRM",
-                    "Публикатор HLS завершился до создания плейлиста.\n\n"
-                    "Последние строки журнала:\n" + output);
-            }
-        });
-    }
 
     if (!drmLegacyFileCheckTimer) {
         drmLegacyFileCheckTimer = new QTimer(this);
         drmLegacyFileCheckTimer->setInterval(1500);
         connect(drmLegacyFileCheckTimer, &QTimer::timeout, this, [this, runId, shellQuote]() {
-            if (drmLegacyFileCheckProcess->state() != QProcess::NotRunning)
+            if (drmLegacyFileCheckRunning)
                 return;
 
             // Ограничиваем ожидание, чтобы при ошибке SSH/загрузчика не проверять бесконечно.
@@ -3202,7 +3378,8 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
             {
                 qInfo() << "Checking remote DRM output and assembler status";
-                drmLegacyFileCheckProcess->start("ssh", {
+                drmLegacyFileCheckRunning = true;
+                runCommand("ssh", {
                     "pi@192.168.8.45",
                     "if [ -s \"$HOME/kodigui/drm/hls/.run-id\" ] && "
                     "   [ \"$(cat \"$HOME/kodigui/drm/hls/.run-id\" 2>/dev/null)\" = " + shellQuote(runId) + " ]; then "
@@ -3220,6 +3397,19 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                     "    fi; "
                     "  fi; "
                     "fi"
+                }, [this](const QString &output) {
+                    drmLegacyFileCheckRunning = false;
+                    if (output.contains(QStringLiteral("DRM_HLS_READY"))) {
+                        if (drmLegacyFileCheckTimer)
+                            drmLegacyFileCheckTimer->stop();
+                        QMessageBox::information(this, "DRM",
+                            "Новый динамический HLS-плейлист опубликован.\nНажмите Play — Kodi откроет поток один раз\nи будет получать новые сегменты по мере загрузки.");
+                    } else if (output.contains(QStringLiteral("DRM_MUX_FAILED"))) {
+                        if (drmLegacyFileCheckTimer)
+                            drmLegacyFileCheckTimer->stop();
+                        QMessageBox::warning(this, "DRM",
+                            "Публикатор HLS завершился до создания плейлиста.\n\nПоследние строки журнала:\n" + output);
+                    }
                 });
             }
         });
@@ -3278,12 +3468,8 @@ void MainWindow::on_stopDrmDownloadButton_clicked()
 {
     if (drmFileCheckTimer)
         drmFileCheckTimer->stop();
-    if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning)
-        drmFileCheckProcess->kill();
     if (drmLegacyFileCheckTimer)
         drmLegacyFileCheckTimer->stop();
-    if (drmLegacyFileCheckProcess && drmLegacyFileCheckProcess->state() != QProcess::NotRunning)
-        drmLegacyFileCheckProcess->kill();
 
     // Остановка загрузчика и сборщика сегментов на удалённом устройстве.
     runCommand("ssh", {"pi@192.168.8.45",
