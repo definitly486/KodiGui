@@ -1869,19 +1869,48 @@ QString  MainWindow::currentIptvUrl()
 
 void MainWindow::on_playIptvUrlButton_clicked()
 {
-    // Берём текст из lineEdit_2
-    QString input = ui->iptvUrlEdit->text();
-    QString filePath = "/tmp/list.m3u";
-
-    // 1️⃣ Создаём M3U
-    QFile file(filePath);
-    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        qCritical() << "Cannot create M3U file";
+    // Берём URL из поля ввода.
+    const QString input = ui->iptvUrlEdit->text().trimmed();
+    if (input.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("IPTV"),
+                             QStringLiteral("Введите URL плейлиста."));
         return;
     }
-    QTextStream(&file) << "#EXTM3U\n" << "#EXTINF:-1,My Channel Name\n" << input << "\n";
+
+    // Используем системный временный каталог: /tmp в Linux,
+    // %TEMP% в Windows. Жёстко заданный /tmp на Windows отсутствует.
+    const QString tempDir = QDir::tempPath();
+    const QString filePath = QDir(tempDir).filePath(QStringLiteral("list.m3u"));
+
+    // Создаём M3U локально перед отправкой на Kodi по SFTP.
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        const QString error = file.errorString();
+        qCritical().noquote() << "Cannot create M3U file:" << filePath << error;
+        QMessageBox::critical(this, QStringLiteral("IPTV"),
+                              QStringLiteral("Не удалось создать M3U-файл:\n%1\n\n%2")
+                                  .arg(QDir::toNativeSeparators(filePath), error));
+        return;
+    }
+
+    QTextStream stream(&file);
+    stream << "#EXTM3U\n"
+           << "#EXTINF:-1,My Channel Name\n"
+           << input << "\n";
+    stream.flush();
+
+    if (stream.status() != QTextStream::Ok || file.error() != QFileDevice::NoError) {
+        const QString error = file.errorString();
+        file.close();
+        qCritical().noquote() << "Cannot write M3U file:" << filePath << error;
+        QMessageBox::critical(this, QStringLiteral("IPTV"),
+                              QStringLiteral("Ошибка записи M3U-файла:\n%1")
+                                  .arg(error));
+        return;
+    }
+
     file.close();
-    qDebug() << "Temporary M3U created at" << filePath;
+    qDebug().noquote() << "Temporary M3U created at" << filePath;
 
     QPointer<MainWindow> safeThis(this);
 
