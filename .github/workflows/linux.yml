@@ -51,13 +51,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \\
-            build-essential \\
-            pkg-config \\
-            qt6-base-dev \\
-            qt6-webengine-dev \\
-            qt6-tools-dev-tools \\
-            libssh2-1-dev
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config qt6-base-dev qt6-webengine-dev qt6-tools-dev-tools libssh2-1-dev
 
       - name: Build KodiGui
         run: bash ./scripts/build-linux.sh
