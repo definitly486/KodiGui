@@ -1621,7 +1621,7 @@ void MainWindow::on_showStreamlinkInfoButton_clicked()
             .filePath(QStringLiteral("runtime/") + bundledName);
 
     QString program;
-    if (QFileInfo::isExecutable(bundledProgram)) {
+    if (QFileInfo(bundledProgram).isExecutable()) {
         program = bundledProgram;
     } else {
         // Development fallback; release archives contain runtime/streamlink.
