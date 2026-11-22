@@ -2318,27 +2318,47 @@ QUrl url("https://matchtv.ru/on-air");
 }
 void MainWindow::on_playMatchTvIptvButton_clicked()
 {
-    QString input = ui->matchTvUrlEdit->text();
-    QString filePath = "/tmp/list.m3u";
-
-    if (input.trimmed().isEmpty()) {
+    const QString input = ui->matchTvUrlEdit->text().trimmed();
+    if (input.isEmpty()) {
         qWarning() << "Match TV: URL is empty — press \"Получить URL\" first";
+        QMessageBox::warning(this, QStringLiteral("Матч ТВ"),
+                             QStringLiteral("Сначала получите URL трансляции."));
         return;
     }
 
-    // 1️⃣ Создаём M3U
+    // Используем системный временный каталог: /tmp в Linux и %TEMP% в Windows.
+    const QString tempDir = QDir::tempPath();
+    const QString filePath = QDir(tempDir).filePath(QStringLiteral("list.m3u"));
+
+    // 1️⃣ Создаём M3U во временном каталоге текущей ОС.
     QFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        qCritical() << "Cannot create M3U file";
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        const QString error = file.errorString();
+        qCritical().noquote() << "Match TV: cannot create M3U file:" << filePath << error;
+        QMessageBox::critical(
+            this, QStringLiteral("Матч ТВ"),
+            QStringLiteral("Не удалось создать M3U-файл:\n%1\n\n%2")
+                .arg(QDir::toNativeSeparators(filePath), error));
         return;
     }
-    QTextStream(&file)
-        << "#EXTM3U\n"
-        << "#EXTINF:-1,My Channel Name\n"
-        << input << "\n";
-    file.close();
 
-    qDebug() << "Temporary M3U created at" << filePath;
+    QTextStream stream(&file);
+    stream << "#EXTM3U\n"
+           << "#EXTINF:-1,My Channel Name\n"
+           << input << "\n";
+    stream.flush();
+
+    if (stream.status() != QTextStream::Ok || file.error() != QFileDevice::NoError) {
+        const QString error = file.errorString();
+        file.close();
+        qCritical().noquote() << "Match TV: cannot write M3U file:" << filePath << error;
+        QMessageBox::critical(this, QStringLiteral("Матч ТВ"),
+                              QStringLiteral("Ошибка записи M3U-файла:\n%1").arg(error));
+        return;
+    }
+
+    file.close();
+    qDebug().noquote() << "Match TV: temporary M3U created at" << filePath;
 
     QPointer<MainWindow> safeThis(this);
 
