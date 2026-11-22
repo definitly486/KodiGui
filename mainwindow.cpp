@@ -70,6 +70,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <utility>
+#include <memory>
 #include <QPushButton>
 #include <QStandardPaths>
 #include <QEvent>
@@ -85,7 +86,8 @@
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 
-// Выполняет внешнюю команду (используется для "ssh pi@... <cmd>").
+// Выполняет удалённую команду через встроенный libssh2-клиент.
+// Системный ssh и пользовательский ~/.ssh/config не используются.
 // Определена ниже в файле; объявлена здесь, т.к. используется раньше.
 void runCommand(const QString &command, const QStringList &args = {},
                 std::function<void(const QString &)> onFinished = {});
