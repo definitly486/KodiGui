@@ -127,6 +127,8 @@ protected:
  QProcess *drmFileCheckProcess = nullptr;
  int drmFileCheckAttempts = 0;
  bool drmFileCheckRunning = false;
+ bool drmStatusCheckRunning = false;
+ bool youtubeStatusCheckRunning = false;
  QTimer *drmLegacyFileCheckTimer = nullptr;
  QProcess *drmLegacyFileCheckProcess = nullptr;
  int drmLegacyFileCheckAttempts = 0;
