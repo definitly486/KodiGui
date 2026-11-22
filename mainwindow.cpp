@@ -1082,15 +1082,47 @@ MainWindow::MainWindow(QWidget *parent)
     sshForm->addRow(QStringLiteral("SSH-ключ:"), sshKeyEdit);
     settingsLayout->addLayout(sshForm);
 
+    auto *sshButtonsLayout = new QHBoxLayout();
     auto *sshSaveButton = new QPushButton(QStringLiteral("Сохранить SSH-настройки"), settingsPage);
     sshSaveButton->setObjectName(QStringLiteral("saveSshSettingsButton"));
-    settingsLayout->addWidget(sshSaveButton);
+    auto *sshTestButton = new QPushButton(QStringLiteral("Проверить подключение"), settingsPage);
+    sshTestButton->setObjectName(QStringLiteral("testSshConnectionButton"));
+    sshButtonsLayout->addWidget(sshSaveButton);
+    sshButtonsLayout->addWidget(sshTestButton);
+    settingsLayout->addLayout(sshButtonsLayout);
     auto *sshHint = new QLabel(
         QStringLiteral("Команды выполняются встроенным libssh2. Системные ssh и sshpass не требуются. "
                        "Пароль сохраняется в пользовательских настройках приложения."),
         settingsPage);
     sshHint->setWordWrap(true);
     settingsLayout->addWidget(sshHint);
+
+    connect(sshTestButton, &QPushButton::clicked, this,
+            [this, themeSettings, sshHostEdit, sshPortEdit, sshUserEdit, sshPasswordEdit, sshKeyEdit]() {
+        bool portOk = false;
+        const int port = sshPortEdit->text().trimmed().toInt(&portOk);
+        if (sshHostEdit->text().trimmed().isEmpty() ||
+            sshUserEdit->text().trimmed().isEmpty() || !portOk || port < 1 || port > 65535) {
+            QMessageBox::warning(this, QStringLiteral("SSH"),
+                                 QStringLiteral("Проверьте адрес, пользователя и порт SSH (1–65535)."));
+            return;
+        }
+        themeSettings->setValue(QStringLiteral("ssh/host"), sshHostEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/port"), port);
+        themeSettings->setValue(QStringLiteral("ssh/user"), sshUserEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/password"), sshPasswordEdit->text());
+        themeSettings->setValue(QStringLiteral("ssh/privateKey"), sshKeyEdit->text().trimmed());
+        themeSettings->sync();
+        runCommand(QStringLiteral("ssh"), {QStringLiteral("test"), QStringLiteral("printf 'KODIGUI_SSH_OK\\n'")},
+                   [this](const QString &output) {
+            if (output.contains(QStringLiteral("KODIGUI_SSH_OK")))
+                QMessageBox::information(this, QStringLiteral("SSH"),
+                                         QStringLiteral("SSH-подключение успешно."));
+            else
+                QMessageBox::warning(this, QStringLiteral("SSH"),
+                                     QStringLiteral("Не удалось выполнить SSH-команду:\n") + output);
+        });
+    });
 
     connect(sshSaveButton, &QPushButton::clicked, this,
             [themeSettings, sshHostEdit, sshPortEdit, sshUserEdit, sshPasswordEdit, sshKeyEdit]() {
@@ -2002,19 +2034,10 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
             error = QStringLiteral("SSH command start failed: %1")
                         .arg(lastSessionError());
         } else {
+            libssh2_channel_handle_extended_data(channel, LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE);
             char buffer[8192];
             for (;;) {
                 const auto count = libssh2_channel_read(channel, buffer, sizeof(buffer));
-                if (count > 0) {
-                    output.append(buffer, static_cast<qsizetype>(count));
-                    continue;
-                }
-                if (count == LIBSSH2_ERROR_EAGAIN)
-                    continue;
-                break;
-            }
-            for (;;) {
-                const auto count = libssh2_channel_read_stderr(channel, buffer, sizeof(buffer));
                 if (count > 0) {
                     output.append(buffer, static_cast<qsizetype>(count));
                     continue;
