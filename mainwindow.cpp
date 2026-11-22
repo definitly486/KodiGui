@@ -1990,7 +1990,7 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
         }
         if (authResult != 0) {
             error = QStringLiteral("SSH authentication failed: %1")
-                        .arg(QString::fromLatin1(libssh2_session_last_error(session, nullptr, nullptr, 0)));
+                        .arg(lastSessionError());
         }
     }
 
@@ -2000,7 +2000,7 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
         channel = libssh2_channel_open_session(session);
         if (!channel || libssh2_channel_exec(channel, remoteCommand.toUtf8().constData()) != 0) {
             error = QStringLiteral("SSH command start failed: %1")
-                        .arg(QString::fromLatin1(libssh2_session_last_error(session, nullptr, nullptr, 0)));
+                        .arg(lastSessionError());
         } else {
             char buffer[8192];
             for (;;) {
