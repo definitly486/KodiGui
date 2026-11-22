@@ -1146,6 +1146,7 @@ MainWindow::MainWindow(QWidget *parent)
         themeSettings->setValue(QStringLiteral("ssh/user"), sshUserEdit->text().trimmed());
         themeSettings->setValue(QStringLiteral("ssh/password"), sshPasswordEdit->text());
         themeSettings->setValue(QStringLiteral("ssh/privateKey"), sshKeyEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/keyPassphrase"), sshKeyPassphraseEdit->text());
         themeSettings->sync();
         QMessageBox::information(nullptr, QStringLiteral("SSH"),
                                  QStringLiteral("SSH-настройки сохранены."));
