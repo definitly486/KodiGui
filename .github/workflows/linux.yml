@@ -45,10 +45,31 @@ jobs:
             exit 1
           fi
 
+      - name: Set up Python for bundled Streamlink
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Package Linux binary
         run: |
-          mkdir -p dist/kodigui-linux-x86_64
+          mkdir -p dist/kodigui-linux-x86_64/runtime
           install -m 0755 ./kodigui dist/kodigui-linux-x86_64/kodigui
+          python -m pip install --upgrade pip
+          python -m pip install streamlink pyinstaller
+          cat > "$RUNNER_TEMP/kodigui_streamlink_entry.py" <<'PY'
+          from streamlink_cli.main import main
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PY
+          python -m PyInstaller --noconfirm --clean --onefile --console \
+            --name streamlink \
+            --distpath dist/kodigui-linux-x86_64/runtime \
+            --workpath "$RUNNER_TEMP/streamlink-build" \
+            --specpath "$RUNNER_TEMP" \
+            --collect-all streamlink --collect-all streamlink_cli \
+            --collect-all certifi "$RUNNER_TEMP/kodigui_streamlink_entry.py"
+          dist/kodigui-linux-x86_64/runtime/streamlink --version
           cp README.md dist/kodigui-linux-x86_64/README.md
           cp ldd-report.txt dist/kodigui-linux-x86_64/
           tar -C dist -czf kodigui-linux-x86_64.tar.gz kodigui-linux-x86_64

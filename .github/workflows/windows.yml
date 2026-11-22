@@ -57,6 +57,11 @@ jobs:
         shell: pwsh
         run: ./scripts/build-windows.ps1
 
+      - name: Set up Python for bundled Streamlink
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Deploy Qt and native runtime
         shell: pwsh
         run: |
@@ -111,6 +116,23 @@ jobs:
           } else {
             Write-Warning "libz.dll was not found under Qt/vcpkg runtime roots; dependency verification will report whether it is required."
           }
+          # Self-contained Streamlink for the URL-page Info button only.
+          python -m pip install --upgrade pip
+          python -m pip install streamlink pyinstaller
+          $entry = Join-Path $env:RUNNER_TEMP "kodigui_streamlink_entry.py"
+          @'
+          from streamlink_cli.main import main
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          '@ | Set-Content -LiteralPath $entry -Encoding utf8
+          $runtime = Join-Path $dist "runtime"
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+          python -m PyInstaller --noconfirm --clean --onefile --console --name streamlink --distpath $runtime --workpath (Join-Path $env:RUNNER_TEMP "streamlink-build") --specpath $env:RUNNER_TEMP --collect-all streamlink --collect-all streamlink_cli --collect-all certifi $entry
+          if ($LASTEXITCODE -ne 0) { throw "Bundled Streamlink build failed" }
+          & (Join-Path $runtime "streamlink.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "Bundled Streamlink self-test failed" }
+
           Copy-Item README.md $dist
           if (Test-Path LICENSE) { Copy-Item LICENSE $dist }
 

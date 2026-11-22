@@ -119,7 +119,8 @@ Do not post diagnostic logs, screenshots, MPD URLs, account cookies, device file
 - Qt WebEngine is required for the embedded Okko browser and other embedded web playback.
 - Python 3 is detected from `PATH` when the Match TV helper is started.
 - Remote Kodi operations use OpenSSH. Install `openssh-client`; password-based SSH actions may also require `sshpass`.
-- Streaming helpers such as `yt-dlp`, `streamlink`, `ffmpeg` and `N_m3u8DL-RE` must be installed on the machine where the corresponding commands are executed.
+- The **Info** button on the URL page uses the Streamlink executable bundled in `runtime/` in the release archive; no system Python or Streamlink installation is required for that button. Other Streamlink actions on the YouTube and Match TV pages are unchanged.
+- Other streaming helpers such as `yt-dlp`, `ffmpeg` and `N_m3u8DL-RE` must be installed on the machine where the corresponding commands are executed.
 - The application connects to the configured Kodi/Raspberry Pi host over SSH and Kodi JSON-RPC. Update the host/user settings in the source before using it on a different network.
 - Widevine playback requires a separately supplied compatible CDM. Set `KODIGUI_WIDEVINE_PATH` to its `libwidevinecdm.so` path, or place it at `~/.local/share/KodiGui/widevine/libwidevinecdm.so`. No Widevine binary is bundled.
 
