@@ -1719,53 +1719,23 @@ void MainWindow::on_stopPvrChannelButton_clicked()
 
 void MainWindow::on_startKodiButton_clicked()
 {
-    QStringList arguments;
-    arguments << "-p"
-              << "639639"
-              << "ssh"
-              << "-o"
-              << "ConnectTimeout=10"
-              << "pi@192.168.8.45"
-              << "nohup kodi >/dev/null 2>&1 </dev/null &";
-
-    const bool started = QProcess::startDetached("sshpass", arguments);
-
-    if (!started) {
-        qWarning() << "Start Kodi: failed to launch sshpass";
-    } else {
-        qDebug() << "Start Kodi: SSH launch initiated";
-    }
+    runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
+        QStringLiteral("nohup kodi >/dev/null 2>&1 </dev/null &")});
 }
 
 
 
 void MainWindow::on_stopKodiButton_clicked()
 {
-
-    QProcess process;
-    QStringList arguments;
-    arguments   << "-p"
-              << "639639"
-              << "ssh"
-              <<  "pi@192.168.8.45"
-              <<  "killall -9 kodi.bin  &";
-    process.start("sshpass", arguments);
-    process.waitForFinished();
-
+    runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
+        QStringLiteral("killall -9 kodi.bin &")});
 }
 
 
 void MainWindow::on_rebootKodiButton_clicked()
 {
-    QProcess process;
-    QStringList arguments;
-    arguments   << "-p"
-              << "639639"
-              << "ssh"
-              <<  "pi@192.168.8.45"
-              <<  "sudo reboot &";
-    process.start("sshpass", arguments);
-    process.waitForFinished();
+    runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
+        QStringLiteral("sudo reboot &")});
 }
 
 
@@ -3496,30 +3466,13 @@ void MainWindow::on_closePopupButton_clicked()
 
 void MainWindow::on_refreshSystemMonitorButton_clicked()
 {
-    QProcess *process = new QProcess(this);
-
-    connect(process, &QProcess::readyReadStandardOutput, this, [=]() {
-        QByteArray data = process->readAllStandardOutput();
-        if (!data.isEmpty())
-            qInfo().noquote() << "[Monitor stdout]" << QString::fromUtf8(data).trimmed();
-        ui->textEdit->append(QString::fromUtf8(data));
-    });
-
-    connect(process, &QProcess::readyReadStandardError, this, [=]() {
-        QByteArray data = process->readAllStandardError();
-        if (!data.isEmpty())
-            qWarning().noquote() << "[Monitor stderr]" << QString::fromUtf8(data).trimmed();
-        ui->textEdit->append(QString::fromUtf8(data));
-    });
-
-    QString program = "sshpass";
-    QStringList arguments;
-
-    arguments << "-p" << "639639"
-              << "ssh"
-              << "pi@192.168.8.45"
-              << "top -b -n 1";
     ui->textEdit->clear();
-    process->start(program, arguments);
+    ui->textEdit->setPlainText(QStringLiteral("Запрос системного монитора по SSH..."));
+    runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
+        QStringLiteral("top -b -n 1")}, [this](const QString &output) {
+        ui->textEdit->setPlainText(output.isEmpty()
+            ? QStringLiteral("SSH не вернул данные. Проверьте подключение и журнал.")
+            : output);
+    });
 }
 
