@@ -1647,8 +1647,25 @@ void MainWindow::on_startKodidlpButton_clicked()
     if (kodidlpProcess->state() != QProcess::NotRunning)
         return;
 
-    // Перед запуском kodidlp проверяем, что IPTV Simple Client включён.
-    // Это предотвращает запуск обработки URL в Kodi с выключенным PVR-клиентом.
+#ifdef Q_OS_WIN
+    const QString streamlinkName = QStringLiteral("streamlink.exe");
+#else
+    const QString streamlinkName = QStringLiteral("streamlink");
+#endif
+    const QString bundledStreamlink =
+        QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("runtime/") + streamlinkName);
+    QString streamlinkProgram = QFileInfo(bundledStreamlink).isExecutable()
+        ? bundledStreamlink
+        : QStandardPaths::findExecutable(QStringLiteral("streamlink"));
+    if (streamlinkProgram.isEmpty()) {
+        ui->textEdit_info->append(
+            QStringLiteral("[Не найден встроенный Streamlink: %1]").arg(bundledStreamlink));
+        ui->startKodidlpButton->setEnabled(true);
+        ui->startKodidlpButton->setText(QStringLiteral("run"));
+        return;
+    }
+
     QJsonObject check;
     check["jsonrpc"] = "2.0";
     check["id"] = rpcId++;
@@ -1658,51 +1675,262 @@ void MainWindow::on_startKodidlpButton_clicked()
         {"properties", QJsonArray{"name", "enabled", "version"}}
     };
 
+    ui->textEdit_info->clear();
     ui->textEdit_info->append(QStringLiteral("[Проверка IPTV Simple Client...]"));
     ui->startKodidlpButton->setEnabled(false);
     ui->startKodidlpButton->setText(QStringLiteral("Проверка..."));
 
+    QPointer<MainWindow> safeThis(this);
     sendJsonRpc(check, "Check IPTV Simple Client before kodidlp",
-                [this, input](const QJsonObject &response) {
+                [safeThis, input, streamlinkProgram](const QJsonObject &response) {
+        if (!safeThis)
+            return;
         if (response.contains("error")) {
             const QString details =
                 response["error"].toObject()["message"].toString();
-            ui->textEdit_info->append(
+            safeThis->ui->textEdit_info->append(
                 QStringLiteral("[Не удалось проверить IPTV Simple Client: %1]")
                     .arg(details.isEmpty() ? QStringLiteral("неизвестная ошибка") : details));
-            ui->startKodidlpButton->setEnabled(true);
-            ui->startKodidlpButton->setText(QStringLiteral("run"));
+            safeThis->ui->startKodidlpButton->setEnabled(true);
+            safeThis->ui->startKodidlpButton->setText(QStringLiteral("run"));
             QMessageBox::warning(
-                this,
+                safeThis,
                 QStringLiteral("IPTV Simple Client"),
                 QStringLiteral("Не удалось проверить состояние IPTV Simple Client на Kodi.\n\n"
-                               "Запуск kodidlp отменён."));
+                               "Запуск отменён."));
             return;
         }
 
         const QJsonObject addon =
             response["result"].toObject()["addon"].toObject();
         if (addon.isEmpty() || !addon["enabled"].toBool(false)) {
-            ui->textEdit_info->append(
-                QStringLiteral("[IPTV Simple Client выключен — запуск kodidlp отменён]"));
-            ui->startKodidlpButton->setEnabled(true);
-            ui->startKodidlpButton->setText(QStringLiteral("run"));
+            safeThis->ui->textEdit_info->append(
+                QStringLiteral("[IPTV Simple Client выключен — запуск отменён]"));
+            safeThis->ui->startKodidlpButton->setEnabled(true);
+            safeThis->ui->startKodidlpButton->setText(QStringLiteral("run"));
             QMessageBox::warning(
-                this,
+                safeThis,
                 QStringLiteral("IPTV Simple Client выключен"),
                 QStringLiteral("Дополнение IPTV Simple Client (pvr.iptvsimple) "
                                "не установлено или выключено.\n\n"
                                "Включите его в Kodi: Настройки → Дополнения → "
                                "Мои дополнения → Клиенты PVR → IPTV Simple Client.\n\n"
-                               "Запуск kodidlp отменён."));
+                               "Запуск отменён."));
             return;
         }
 
-        ui->textEdit_info->clear();
-        ui->textEdit_info->append(QStringLiteral("[IPTV Simple Client включён]"));
-        ui->textEdit_info->append(QStringLiteral("[Запуск kodidlp...]"));
-        ui->startKodidlpButton->setText(QStringLiteral("Выполняется..."));
-        kodidlpProcess->start(QStringLiteral("kodidlp"), QStringList{input});
+        safeThis->ui->textEdit_info->append(QStringLiteral("[IPTV Simple Client включён]"));
+        safeThis->ui->textEdit_info->append(QStringLiteral("[Получение списка качеств Streamlink...]"));
+        safeThis->ui->startKodidlpButton->setText(QStringLiteral("Streamlink..."));
+
+        auto finish = [safeThis](const QString &message, bool success) {
+            if (!safeThis)
+                return;
+            safeThis->ui->textEdit_info->append(message);
+            safeThis->ui->startKodidlpButton->setEnabled(true);
+            safeThis->ui->startKodidlpButton->setText(QStringLiteral("run"));
+            if (success)
+                qInfo().noquote() << "[KODIDLP]" << message;
+            else
+                qWarning().noquote() << "[KODIDLP]" << message;
+        };
+
+        auto *probe = new QProcess(safeThis);
+        probe->setProgram(streamlinkProgram);
+        probe->setArguments({input});
+        QObject::connect(probe,
+                         QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                         safeThis,
+                         [safeThis, probe, input, streamlinkProgram, finish]
+                         (int, QProcess::ExitStatus) {
+            const QByteArray probeOutput =
+                probe->readAllStandardOutput() + "\n" + probe->readAllStandardError();
+            probe->deleteLater();
+            const QString text = QString::fromLocal8Bit(probeOutput);
+            static const QRegularExpression streamsExpression(
+                QStringLiteral("Available streams:\\s*([^\\r\\n]+)"));
+            const auto match = streamsExpression.match(text);
+            QString quality = QStringLiteral("best");
+            if (match.hasMatch()) {
+                const QStringList streams = match.captured(1).split(
+                    QLatin1Char(','), Qt::SkipEmptyParts);
+                if (streams.size() >= 3)
+                    quality = streams.at(2).trimmed();
+                else if (!streams.isEmpty())
+                    quality = streams.last().trimmed();
+            }
+            if (quality.isEmpty())
+                quality = QStringLiteral("best");
+
+            safeThis->ui->textEdit_info->append(
+                QStringLiteral("[Выбрано качество: %1]").arg(quality));
+
+            auto *resolve = new QProcess(safeThis);
+            resolve->setProgram(streamlinkProgram);
+            resolve->setArguments({QStringLiteral("--stream-url"), input, quality});
+            QObject::connect(resolve,
+                             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                             safeThis,
+                             [safeThis, resolve, finish](int exitCode, QProcess::ExitStatus status) {
+                const QString streamUrl = QString::fromLocal8Bit(
+                    resolve->readAllStandardOutput()).trimmed();
+                const QString errors = QString::fromLocal8Bit(
+                    resolve->readAllStandardError()).trimmed();
+                resolve->deleteLater();
+                if (status != QProcess::NormalExit || exitCode != 0 ||
+                    streamUrl.isEmpty() ||
+                    !(streamUrl.startsWith(QStringLiteral("http://")) ||
+                      streamUrl.startsWith(QStringLiteral("https://")))) {
+                    finish(QStringLiteral("[Streamlink не смог получить прямой URL потока]%1")
+                               .arg(errors.isEmpty() ? QString() : QStringLiteral("\n") + errors),
+                           false);
+                    return;
+                }
+
+                const QString localPlaylist =
+                    QDir::temp().filePath(QStringLiteral("list.m3u"));
+                const QByteArray playlist =
+                    (streamUrl +
+                     QStringLiteral("|user-agent=Mozilla/5.0 (X11; FreeBSD amd64; rv:77.0) "
+                                    "Gecko/20100101 Firefox/77.0\n")).toUtf8();
+                QFile file(localPlaylist);
+                if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                    finish(QStringLiteral("[Не удалось создать %1: %2]")
+                               .arg(localPlaylist, file.errorString()), false);
+                    return;
+                }
+                if (file.write(playlist) != playlist.size()) {
+                    const QString error = file.errorString();
+                    file.close();
+                    finish(QStringLiteral("[Не удалось записать плейлист: %1]").arg(error), false);
+                    return;
+                }
+                file.close();
+
+                safeThis->ui->textEdit_info->append(
+                    QStringLiteral("[Плейлист создан: %1]").arg(localPlaylist));
+                safeThis->ui->textEdit_info->append(QStringLiteral("[Остановка текущего плеера Kodi...]"));
+
+                QJsonObject stop;
+                stop["jsonrpc"] = "2.0";
+                stop["method"] = "Player.Stop";
+                stop["params"] = QJsonObject{{"playerid", 1}};
+                stop["id"] = safeThis->rpcId++;
+                safeThis->sendJsonRpc(stop, "KODIDLP Player.Stop",
+                    [safeThis, localPlaylist, finish](const QJsonObject &stopResponse) {
+                    if (!safeThis)
+                        return;
+                    if (stopResponse.contains("error")) {
+                        finish(QStringLiteral("[Не удалось остановить плеер Kodi: %1]")
+                                   .arg(stopResponse["error"].toObject()["message"].toString()),
+                               false);
+                        return;
+                    }
+
+                    // The attached kodidlp script waits three seconds before
+                    // calling reloadlist. Each reloadlist invocation uploads
+                    // list.m3u and toggles IPTV Simple Client.
+                    QTimer::singleShot(3000, safeThis, [safeThis, localPlaylist, finish]() {
+                        auto runReloadList = [safeThis, localPlaylist, finish]
+                            (std::function<void()> next) {
+                            auto *watcher = new QFutureWatcher<bool>(safeThis);
+                            QObject::connect(watcher, &QFutureWatcher<bool>::finished,
+                                             safeThis, [safeThis, watcher, finish, next]() {
+                                const bool uploaded = watcher->result();
+                                watcher->deleteLater();
+                                if (!uploaded) {
+                                    finish(QStringLiteral("[reloadlist: ошибка SFTP-загрузки "
+                                                          "в /var/www/html/list.m3u]"), false);
+                                    return;
+                                }
+
+                                QJsonObject toggle;
+                                toggle["jsonrpc"] = "2.0";
+                                toggle["method"] = "Addons.SetAddonEnabled";
+                                toggle["params"] = QJsonObject{
+                                    {"addonid", "pvr.iptvsimple"},
+                                    {"enabled", "toggle"}
+                                };
+                                toggle["id"] = safeThis->rpcId++;
+                                safeThis->sendJsonRpc(toggle, "reloadlist Addons.SetAddonEnabled",
+                                    [safeThis, finish, next](const QJsonObject &toggleResponse) {
+                                    if (!safeThis)
+                                        return;
+                                    if (toggleResponse.contains("error")) {
+                                        finish(QStringLiteral("[reloadlist: ошибка переключения "
+                                                              "IPTV Simple Client: %1]")
+                                                   .arg(toggleResponse["error"].toObject()
+                                                            ["message"].toString()),
+                                               false);
+                                        return;
+                                    }
+                                    if (next)
+                                        next();
+                                });
+                            });
+                            watcher->setFuture(QtConcurrent::run([localPlaylist]() {
+                                return uploadFileViaSftp(
+                                    localPlaylist, QStringLiteral("/var/www/html/list.m3u"));
+                            }));
+                        };
+
+                        // The original kodidlp script calls reloadlist twice.
+                        runReloadList([safeThis, runReloadList, finish]() {
+                            runReloadList([safeThis, finish]() {
+                                QTimer::singleShot(3000, safeThis, [safeThis, finish]() {
+                                    QJsonObject open;
+                                    open["jsonrpc"] = "2.0";
+                                    open["method"] = "Player.Open";
+                                    open["params"] = QJsonObject{
+                                        {"item", QJsonObject{{"channelid", 1}}}
+                                    };
+                                    open["id"] = safeThis->rpcId++;
+                                    safeThis->sendJsonRpc(open, "KODIDLP Player.Open channelid=1",
+                                        [safeThis, finish](const QJsonObject &openResponse) {
+                                        if (!safeThis)
+                                            return;
+                                        if (openResponse.contains("error")) {
+                                            finish(QStringLiteral("[Плейлист загружен, но Kodi "
+                                                                  "не смог открыть канал 1: %1]")
+                                                       .arg(openResponse["error"].toObject()
+                                                                ["message"].toString()),
+                                                   false);
+                                        } else {
+                                            finish(QStringLiteral("[KODIDLP завершён: плейлист "
+                                                                  "загружен, канал 1 открыт]"), true);
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+            resolve->start();
+            QTimer::singleShot(120000, resolve, [resolve, finish]() {
+                if (resolve->state() != QProcess::NotRunning) {
+                    resolve->kill();
+                    finish(QStringLiteral("[Streamlink: превышено время ожидания получения URL]"),
+                           false);
+                }
+            });
+        });
+        QObject::connect(probe, &QProcess::errorOccurred, safeThis,
+                         [probe, finish](QProcess::ProcessError error) {
+            if (error == QProcess::FailedToStart) {
+                probe->deleteLater();
+                finish(QStringLiteral("[Не удалось запустить Streamlink: %1]")
+                           .arg(probe->errorString()), false);
+            }
+        });
+        probe->start();
+        QTimer::singleShot(45000, probe, [probe, finish]() {
+            if (probe->state() != QProcess::NotRunning) {
+                probe->kill();
+                finish(QStringLiteral("[Streamlink: превышено время ожидания списка качеств]"),
+                       false);
+            }
+        });
     });
 }
 
