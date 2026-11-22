@@ -1080,6 +1080,12 @@ MainWindow::MainWindow(QWidget *parent)
     sshKeyEdit->setPlaceholderText(QStringLiteral("Путь к приватному ключу (необязательно)"));
     sshKeyEdit->setText(themeSettings->value(QStringLiteral("ssh/privateKey")).toString());
     sshForm->addRow(QStringLiteral("SSH-ключ:"), sshKeyEdit);
+
+    auto *sshKeyPassphraseEdit = new QLineEdit(settingsPage);
+    sshKeyPassphraseEdit->setObjectName(QStringLiteral("sshKeyPassphraseEdit"));
+    sshKeyPassphraseEdit->setEchoMode(QLineEdit::Password);
+    sshKeyPassphraseEdit->setText(themeSettings->value(QStringLiteral("ssh/keyPassphrase")).toString());
+    sshForm->addRow(QStringLiteral("Пароль SSH-ключа:"), sshKeyPassphraseEdit);
     settingsLayout->addLayout(sshForm);
 
     auto *sshButtonsLayout = new QHBoxLayout();
@@ -1098,7 +1104,7 @@ MainWindow::MainWindow(QWidget *parent)
     settingsLayout->addWidget(sshHint);
 
     connect(sshTestButton, &QPushButton::clicked, this,
-            [this, themeSettings, sshHostEdit, sshPortEdit, sshUserEdit, sshPasswordEdit, sshKeyEdit]() {
+            [this, themeSettings, sshHostEdit, sshPortEdit, sshUserEdit, sshPasswordEdit, sshKeyEdit, sshKeyPassphraseEdit]() {
         bool portOk = false;
         const int port = sshPortEdit->text().trimmed().toInt(&portOk);
         if (sshHostEdit->text().trimmed().isEmpty() ||
@@ -1112,6 +1118,7 @@ MainWindow::MainWindow(QWidget *parent)
         themeSettings->setValue(QStringLiteral("ssh/user"), sshUserEdit->text().trimmed());
         themeSettings->setValue(QStringLiteral("ssh/password"), sshPasswordEdit->text());
         themeSettings->setValue(QStringLiteral("ssh/privateKey"), sshKeyEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/keyPassphrase"), sshKeyPassphraseEdit->text());
         themeSettings->sync();
         runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"), QStringLiteral("printf 'KODIGUI_SSH_OK\\n'")},
                    [this](const QString &output) {
@@ -1125,7 +1132,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(sshSaveButton, &QPushButton::clicked, this,
-            [themeSettings, sshHostEdit, sshPortEdit, sshUserEdit, sshPasswordEdit, sshKeyEdit]() {
+            [themeSettings, sshHostEdit, sshPortEdit, sshUserEdit, sshPasswordEdit, sshKeyEdit, sshKeyPassphraseEdit]() {
         bool portOk = false;
         const int port = sshPortEdit->text().trimmed().toInt(&portOk);
         if (sshHostEdit->text().trimmed().isEmpty() ||
@@ -1551,6 +1558,8 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
     const int port = sshSettings.value(QStringLiteral("ssh/port"), 22).toInt();
     const QString user = sshSettings.value(QStringLiteral("ssh/user"), QStringLiteral("pi")).toString();
     const QString password = sshSettings.value(QStringLiteral("ssh/password"), QStringLiteral("639639")).toString();
+    const QString privateKey = sshSettings.value(QStringLiteral("ssh/privateKey")).toString();
+    const QString keyPassphrase = sshSettings.value(QStringLiteral("ssh/keyPassphrase")).toString();
 
 #ifdef Q_OS_WIN
     const SOCKET sock = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -1593,8 +1602,13 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
         closeSocket();
         return false;
     }
-    if (libssh2_userauth_password(session, user.toUtf8().constData(),
-                                  password.toUtf8().constData())) {
+    const int authResult = !privateKey.isEmpty()
+        ? libssh2_userauth_publickey_fromfile(
+              session, user.toUtf8().constData(), nullptr,
+              QFile::encodeName(privateKey).constData(), keyPassphrase.toUtf8().constData())
+        : libssh2_userauth_password(session, user.toUtf8().constData(),
+                                    password.toUtf8().constData());
+    if (authResult) {
         libssh2_session_disconnect(session, "Bye");
         libssh2_session_free(session);
         closeSocket();
@@ -1983,6 +1997,7 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
     const QString user = settings.value(QStringLiteral("ssh/user"), QStringLiteral("pi")).toString();
     const QString password = settings.value(QStringLiteral("ssh/password"), QStringLiteral("639639")).toString();
     const QString privateKey = settings.value(QStringLiteral("ssh/privateKey")).toString();
+    const QString keyPassphrase = settings.value(QStringLiteral("ssh/keyPassphrase")).toString();
 
     if (!ensureLibssh2Initialized())
         return QStringLiteral("libssh2 initialization failed");
@@ -2015,7 +2030,7 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
             authResult = libssh2_userauth_publickey_fromfile(
                 session, user.toUtf8().constData(), nullptr,
                 QFile::encodeName(privateKey).constData(),
-                password.toUtf8().constData());
+                keyPassphrase.toUtf8().constData());
         } else if (!password.isEmpty()) {
             authResult = libssh2_userauth_password(
                 session, user.toUtf8().constData(), password.toUtf8().constData());
