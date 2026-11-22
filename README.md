@@ -112,6 +112,6 @@ Do not post diagnostic logs, screenshots, MPD URLs, account cookies, device file
 
 ## GitHub Actions
 
-The Linux workflow builds on pushes and pull requests targeting `main`, on `v*` tags, and on manual dispatch. It uploads the `kodigui-linux-x86_64` archive and checksum as a workflow artifact. Tag builds are also attached to the corresponding GitHub Release.
+The Linux workflow builds on pushes and pull requests targeting `main` or `feature/linux-support`, on `v*` tags, and on manual dispatch. It uploads the `kodigui-linux-x86_64` archive and checksum as a workflow artifact. Pushing a tag such as `v1.0.0` also creates or updates a GitHub Release and attaches the archive and checksum.
 
 The CI artifact is a dynamically linked Linux executable; Qt 6, Qt WebEngine and libssh2 runtime libraries must be installed on the target system. The Widevine CDM is not part of the CI artifact and must be installed separately on each machine where DRM playback is required.
