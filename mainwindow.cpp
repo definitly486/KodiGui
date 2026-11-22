@@ -198,7 +198,6 @@ MainWindow::MainWindow(QWidget *parent)
     ui->drmLayout->insertLayout(2, drmProcessStatusLayout);
 
     auto *drmProcessStatusTimer = new QTimer(this);
-    auto *drmProcessStatusProcess = new QProcess(this);
     drmProcessStatusTimer->setInterval(2500);
 
     auto setDrmProcessStatus = [](QLabel *label, const QString &name, bool running) {
@@ -209,59 +208,52 @@ MainWindow::MainWindow(QWidget *parent)
             ? QStringLiteral("font-weight: 600; color: #20a464;")
             : QStringLiteral("font-weight: 600; color: #d45b5b;"));
     };
-
-    connect(drmProcessStatusProcess,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
-        if (exitStatus != QProcess::NormalExit || exitCode != 0) {
-            const QString unavailable = QStringLiteral("нет связи");
-            for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
-                                  ffmpegStatusLabel, nM3u8StatusLabel}) {
-                label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
-                               + QStringLiteral(": ") + unavailable);
-                label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
-            }
-            return;
-        }
-
-        const QString output = QString::fromUtf8(
-            drmProcessStatusProcess->readAllStandardOutput()).trimmed();
-        setDrmProcessStatus(ytDlpStatusLabel, QStringLiteral("yt-dlp"),
-                            output.contains(QStringLiteral("yt-dlp=1")));
-        setDrmProcessStatus(streamlinkStatusLabel, QStringLiteral("streamlink"),
-                            output.contains(QStringLiteral("streamlink=1")));
-        setDrmProcessStatus(ffmpegStatusLabel, QStringLiteral("ffmpeg"),
-                            output.contains(QStringLiteral("ffmpeg=1")));
-        setDrmProcessStatus(nM3u8StatusLabel, QStringLiteral("N_m3u8DL-+"),
-                            output.contains(QStringLiteral("N_m3u8DL-+=1")));
-    });
-
-    connect(drmProcessStatusProcess, &QProcess::errorOccurred, this,
-            [=](QProcess::ProcessError) {
+    auto setDrmConnectionUnavailable = [=]() {
         for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
                               ffmpegStatusLabel, nM3u8StatusLabel}) {
             label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
                            + QStringLiteral(": нет связи"));
             label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
         }
-    });
+    };
 
-    auto checkDrmProcesses = [=]() {
-        if (drmProcessStatusProcess->state() != QProcess::NotRunning)
+    auto checkDrmProcesses = [this, setDrmProcessStatus, setDrmConnectionUnavailable,
+                              ytDlpStatusLabel, streamlinkStatusLabel,
+                              ffmpegStatusLabel, nM3u8StatusLabel]() {
+        if (drmStatusCheckRunning)
             return;
-        drmProcessStatusProcess->start(QStringLiteral("ssh"), {
-            QStringLiteral("pi@192.168.8.45"),
+        drmStatusCheckRunning = true;
+        QPointer<MainWindow> safeThis(this);
+        runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
             QStringLiteral("for name in yt-dlp streamlink ffmpeg N_m3u8DL-+; do "
                            "pattern=$name; case $name in N_m3u8DL-+) pattern=N_m3u8DL ;; esac; "
                            "found=0; "
                            "for file in /proc/[0-9]*/cmdline; do "
                            "pid=${file#/proc/}; pid=${pid%/cmdline}; "
-                           "[ $pid = $ ] && continue; "
+                           "[ $pid = $$ ] && continue; "
                            "[ $pid = $PPID ] && continue; "
                            "cmd=$(tr '\\000' ' ' < $file 2>/dev/null) || continue; "
                            "case $cmd in *$pattern*) found=1; break ;; esac; "
-                           "done; echo $name=$found; done")
-        });
+                           "done; echo $name=$found; done")},
+            [safeThis, setDrmProcessStatus, setDrmConnectionUnavailable,
+             ytDlpStatusLabel, streamlinkStatusLabel, ffmpegStatusLabel,
+             nM3u8StatusLabel](const QString &output) {
+                if (!safeThis)
+                    return;
+                safeThis->drmStatusCheckRunning = false;
+                if (!output.contains(QStringLiteral("yt-dlp="))) {
+                    setDrmConnectionUnavailable();
+                    return;
+                }
+                setDrmProcessStatus(ytDlpStatusLabel, QStringLiteral("yt-dlp"),
+                                    output.contains(QStringLiteral("yt-dlp=1")));
+                setDrmProcessStatus(streamlinkStatusLabel, QStringLiteral("streamlink"),
+                                    output.contains(QStringLiteral("streamlink=1")));
+                setDrmProcessStatus(ffmpegStatusLabel, QStringLiteral("ffmpeg"),
+                                    output.contains(QStringLiteral("ffmpeg=1")));
+                setDrmProcessStatus(nM3u8StatusLabel, QStringLiteral("N_m3u8DL-+"),
+                                    output.contains(QStringLiteral("N_m3u8DL-+=1")));
+            });
     };
     connect(drmProcessStatusTimer, &QTimer::timeout, this, checkDrmProcesses);
 
@@ -271,8 +263,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (index == drmPageIndex) {
             if (!drmProcessStatusTimer->isActive()) {
                 drmProcessStatusTimer->start();
-                if (drmProcessStatusProcess->state() == QProcess::NotRunning)
-                    checkDrmProcesses();
+                checkDrmProcesses();
             }
         } else {
             drmProcessStatusTimer->stop();
@@ -317,9 +308,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
 
         auto *youtubeStatusTimer = new QTimer(this);
-        auto *youtubeStatusProcess = new QProcess(this);
         youtubeStatusTimer->setInterval(2500);
-
         auto setYoutubeProcessStatus = [](QLabel *label, const QString &name, bool running) {
             label->setText(QStringLiteral("%1: %2")
                                .arg(name, running ? QStringLiteral("работает")
@@ -328,7 +317,6 @@ MainWindow::MainWindow(QWidget *parent)
                 ? QStringLiteral("font-weight: 600; color: #20a464;")
                 : QStringLiteral("font-weight: 600; color: #d45b5b;"));
         };
-
         auto setYoutubeConnectionUnavailable = [=]() {
             for (QLabel *label : {youtubeYtDlpStatusLabel, youtubeStreamlinkStatusLabel,
                                   youtubeFfmpegStatusLabel}) {
@@ -337,38 +325,36 @@ MainWindow::MainWindow(QWidget *parent)
                 label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
             }
         };
-
-        connect(youtubeStatusProcess,
-                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
-            if (exitStatus != QProcess::NormalExit || exitCode != 0) {
-                setYoutubeConnectionUnavailable();
+        auto checkYoutubeProcesses = [this, setYoutubeProcessStatus,
+                                      setYoutubeConnectionUnavailable,
+                                      youtubeYtDlpStatusLabel, youtubeStreamlinkStatusLabel,
+                                      youtubeFfmpegStatusLabel]() {
+            if (youtubeStatusCheckRunning)
                 return;
-            }
-
-            const QString output = QString::fromUtf8(
-                youtubeStatusProcess->readAllStandardOutput()).trimmed();
-            setYoutubeProcessStatus(youtubeYtDlpStatusLabel, QStringLiteral("yt-dlp"),
-                                    output.contains(QStringLiteral("yt-dlp=1")));
-            setYoutubeProcessStatus(youtubeStreamlinkStatusLabel, QStringLiteral("streamlink"),
-                                    output.contains(QStringLiteral("streamlink=1")));
-            setYoutubeProcessStatus(youtubeFfmpegStatusLabel, QStringLiteral("ffmpeg"),
-                                    output.contains(QStringLiteral("ffmpeg=1")));
-        });
-
-        connect(youtubeStatusProcess, &QProcess::errorOccurred, this,
-                [=](QProcess::ProcessError) { setYoutubeConnectionUnavailable(); });
-
-        auto checkYoutubeProcesses = [=]() {
-            if (youtubeStatusProcess->state() != QProcess::NotRunning)
-                return;
-            youtubeStatusProcess->start(QStringLiteral("ssh"), {
-                QStringLiteral("pi@192.168.8.45"),
+            youtubeStatusCheckRunning = true;
+            QPointer<MainWindow> safeThis(this);
+            runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
                 QStringLiteral("for name in yt-dlp streamlink ffmpeg; do "
                                "ps -eo comm= | awk -v n=$name "
                                "'$1 == n {found=1} END {print n \"=\" (found ? 1 : 0)}'; "
-                               "done")
-            });
+                               "done")},
+                [safeThis, setYoutubeProcessStatus, setYoutubeConnectionUnavailable,
+                 youtubeYtDlpStatusLabel, youtubeStreamlinkStatusLabel,
+                 youtubeFfmpegStatusLabel](const QString &output) {
+                    if (!safeThis)
+                        return;
+                    safeThis->youtubeStatusCheckRunning = false;
+                    if (!output.contains(QStringLiteral("yt-dlp="))) {
+                        setYoutubeConnectionUnavailable();
+                        return;
+                    }
+                    setYoutubeProcessStatus(youtubeYtDlpStatusLabel, QStringLiteral("yt-dlp"),
+                                            output.contains(QStringLiteral("yt-dlp=1")));
+                    setYoutubeProcessStatus(youtubeStreamlinkStatusLabel, QStringLiteral("streamlink"),
+                                            output.contains(QStringLiteral("streamlink=1")));
+                    setYoutubeProcessStatus(youtubeFfmpegStatusLabel, QStringLiteral("ffmpeg"),
+                                            output.contains(QStringLiteral("ffmpeg=1")));
+                });
         };
 
         const int youtubePageIndex = ui->tabWidget->indexOf(youtubePage);
@@ -378,8 +364,7 @@ MainWindow::MainWindow(QWidget *parent)
             if (index == youtubePageIndex) {
                 if (!youtubeStatusTimer->isActive()) {
                     youtubeStatusTimer->start();
-                    if (youtubeStatusProcess->state() == QProcess::NotRunning)
-                        checkYoutubeProcesses();
+                    checkYoutubeProcesses();
                 }
             } else {
                 youtubeStatusTimer->stop();
