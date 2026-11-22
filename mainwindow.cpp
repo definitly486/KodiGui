@@ -80,6 +80,7 @@
 #include <cstdlib>
 #include <cerrno>
 #include <cstring>
+#include <mutex>
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 
@@ -1774,64 +1775,23 @@ void MainWindow::on_stopPvrChannelButton_clicked()
 
 void MainWindow::on_startKodiButton_clicked()
 {
-    QString program;
-    QStringList arguments;
-    if (QStandardPaths::findExecutable(QStringLiteral("sshpass")).isEmpty()) {
-        // Windows OpenSSH uses the user's configured key/agent instead of sshpass.
-        program = QStringLiteral("ssh");
-        arguments << "-o" << "ConnectTimeout=10"
-                  << "pi@192.168.8.45"
-                  << "nohup kodi >/dev/null 2>&1 </dev/null &";
-    } else {
-        program = QStringLiteral("sshpass");
-        arguments << "-p" << "639639" << "ssh"
-                  << "-o" << "ConnectTimeout=10"
-                  << "pi@192.168.8.45"
-                  << "nohup kodi >/dev/null 2>&1 </dev/null &";
-    }
-
-    const bool started = QProcess::startDetached(program, arguments);
-    if (!started)
-        qWarning() << "Start Kodi: failed to launch" << program;
-    else
-        qDebug() << "Start Kodi: SSH launch initiated";
+    runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
+        QStringLiteral("nohup kodi >/dev/null 2>&1 </dev/null &")});
 }
 
 
 
 void MainWindow::on_stopKodiButton_clicked()
 {
-    QProcess process;
-    QString program;
-    QStringList arguments;
-    if (QStandardPaths::findExecutable(QStringLiteral("sshpass")).isEmpty()) {
-        program = QStringLiteral("ssh");
-        arguments << "pi@192.168.8.45" << "killall -9 kodi.bin &";
-    } else {
-        program = QStringLiteral("sshpass");
-        arguments << "-p" << "639639" << "ssh"
-                  << "pi@192.168.8.45" << "killall -9 kodi.bin &";
-    }
-    process.start(program, arguments);
-    process.waitForFinished();
+    runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
+        QStringLiteral("killall -9 kodi.bin &")});
 }
 
 
 void MainWindow::on_rebootKodiButton_clicked()
 {
-    QProcess process;
-    QString program;
-    QStringList arguments;
-    if (QStandardPaths::findExecutable(QStringLiteral("sshpass")).isEmpty()) {
-        program = QStringLiteral("ssh");
-        arguments << "pi@192.168.8.45" << "sudo reboot &";
-    } else {
-        program = QStringLiteral("sshpass");
-        arguments << "-p" << "639639" << "ssh"
-                  << "pi@192.168.8.45" << "sudo reboot &";
-    }
-    process.start(program, arguments);
-    process.waitForFinished();
+    runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
+        QStringLiteral("sudo reboot &")});
 }
 
 
@@ -1976,6 +1936,12 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
     const QString password = settings.value(QStringLiteral("ssh/password"), QStringLiteral("639639")).toString();
     const QString privateKey = settings.value(QStringLiteral("ssh/privateKey")).toString();
 
+    static std::once_flag libssh2InitFlag;
+    static int libssh2InitResult = LIBSSH2_ERROR_INVAL;
+    std::call_once(libssh2InitFlag, []() { libssh2InitResult = libssh2_init(0); });
+    if (libssh2InitResult != 0)
+        return QStringLiteral("libssh2 initialization failed");
+
     QTcpSocket socket;
     socket.connectToHost(host, static_cast<quint16>(port));
     if (!socket.waitForConnected(10000))
@@ -1988,10 +1954,16 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
     libssh2_session_set_timeout(session, 15000);
 
     QString error;
+    const auto lastSessionError = [session]() {
+        char *message = nullptr;
+        int length = 0;
+        libssh2_session_last_error(session, &message, &length, 0);
+        return QString::fromUtf8(message ? message : "unknown error", length);
+    };
     const auto socketHandle = static_cast<libssh2_socket_t>(socket.socketDescriptor());
     if (libssh2_session_handshake(session, socketHandle) != 0) {
         error = QStringLiteral("SSH handshake failed: %1")
-                    .arg(QString::fromLatin1(libssh2_session_last_error(session, nullptr, nullptr, 0)));
+                    .arg(lastSessionError());
     } else {
         int authResult = -1;
         if (!privateKey.isEmpty()) {
@@ -2019,7 +1991,7 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
         } else {
             char buffer[8192];
             for (;;) {
-                const ssize_t count = libssh2_channel_read(channel, buffer, sizeof(buffer));
+                const auto count = libssh2_channel_read(channel, buffer, sizeof(buffer));
                 if (count > 0) {
                     output.append(buffer, static_cast<qsizetype>(count));
                     continue;
@@ -2029,7 +2001,7 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
                 break;
             }
             for (;;) {
-                const ssize_t count = libssh2_channel_read_stderr(channel, buffer, sizeof(buffer));
+                const auto count = libssh2_channel_read_stderr(channel, buffer, sizeof(buffer));
                 if (count > 0) {
                     output.append(buffer, static_cast<qsizetype>(count));
                     continue;
