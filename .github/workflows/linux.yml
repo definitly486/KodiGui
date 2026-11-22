@@ -12,6 +12,20 @@ on:
       - main
       - feature/linux-support
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Опубликовать GitHub Release после успешной сборки"
+        required: true
+        type: boolean
+        default: false
+      release_tag:
+        description: "Тег релиза, например v1.0.0 (для ручной публикации)"
+        required: false
+        type: string
+      release_name:
+        description: "Название релиза (необязательно)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -21,18 +35,28 @@ jobs:
     name: Build on Ubuntu 24.04
     runs-on: ubuntu-24.04
     steps:
+      - name: Validate manual release inputs
+        if: inputs.publish_release
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9A-Za-z._-]+$ ]]; then
+            echo "Укажи тег релиза в формате v1.0.0."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            qt6-base-dev \
-            qt6-webengine-dev \
-            qt6-tools-dev-tools \
+          sudo apt-get install -y --no-install-recommends \\
+            build-essential \\
+            pkg-config \\
+            qt6-base-dev \\
+            qt6-webengine-dev \\
+            qt6-tools-dev-tools \\
             libssh2-1-dev
 
       - name: Build KodiGui
@@ -67,10 +91,14 @@ jobs:
           retention-days: 30
 
       - name: Publish to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.publish_release && inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ inputs.release_name || (inputs.publish_release && inputs.release_tag) || github.ref_name }}
           files: |
             kodigui-linux-x86_64.tar.gz
             SHA256SUMS
           generate_release_notes: true
+          fail_on_unmatched_files: true
