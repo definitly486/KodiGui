@@ -1554,6 +1554,20 @@ bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
         qWarning() << "libssh2 initialization failed";
         return false;
     }
+
+#ifdef Q_OS_WIN
+    // Winsock must be initialized in this thread before socket()/connect().
+    WSADATA wsaData{};
+    const int wsaStartupResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (wsaStartupResult != 0) {
+        qWarning() << "WSAStartup failed:" << wsaStartupResult;
+        return false;
+    }
+    struct WinsockCleanup {
+        ~WinsockCleanup() { WSACleanup(); }
+    } winsockCleanup;
+#endif
+
     QSettings sshSettings(QStringLiteral("definitly486"), QStringLiteral("KodiGui"));
     const QString host = sshSettings.value(QStringLiteral("ssh/host"), QStringLiteral("192.168.8.45")).toString();
     const int port = sshSettings.value(QStringLiteral("ssh/port"), 22).toInt();
