@@ -37,6 +37,7 @@
 #include <functional>
 #include <QtConcurrent>
 #include <QFuture>
+#include <QFutureWatcher>
 #include <QPointer>
 #include <QDateTime>
 #include <QMetaObject>
@@ -86,7 +87,8 @@
 
 // Выполняет внешнюю команду (используется для "ssh pi@... <cmd>").
 // Определена ниже в файле; объявлена здесь, т.к. используется раньше.
-void runCommand(const QString &command, const QStringList &args = {});
+void runCommand(const QString &command, const QStringList &args = {},
+                std::function<void(const QString &)> onFinished = {});
 
 namespace {
 class OkkoMpdUrlInterceptor final : public QWebEngineUrlRequestInterceptor
@@ -2035,7 +2037,8 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
 }
 } // namespace
 
-void runCommand(const QString &command, const QStringList &args)
+void runCommand(const QString &command, const QStringList &args,
+                std::function<void(const QString &)> onFinished)
 {
     if (command.compare(QStringLiteral("ssh"), Qt::CaseInsensitive) != 0) {
         qWarning() << "External command is not allowed through the SSH runner:" << command;
@@ -2050,11 +2053,19 @@ void runCommand(const QString &command, const QStringList &args)
         return;
     }
     const QString remoteCommand = remoteArgs.join(QLatin1Char(' '));
-    QtConcurrent::run([remoteCommand]() {
-        const QString output = executeSshWithLibssh2(remoteCommand);
+    auto *watcher = new QFutureWatcher<QString>(QCoreApplication::instance());
+    QObject::connect(watcher, &QFutureWatcher<QString>::finished, watcher,
+                     [watcher, onFinished = std::move(onFinished)]() {
+        const QString output = watcher->result();
         if (!output.trimmed().isEmpty())
             qInfo().noquote() << "[SSH]" << output.trimmed();
+        if (onFinished)
+            onFinished(output);
+        watcher->deleteLater();
     });
+    watcher->setFuture(QtConcurrent::run([remoteCommand]() {
+        return executeSshWithLibssh2(remoteCommand);
+    }));
 }
 
 
@@ -3584,6 +3595,10 @@ void MainWindow::on_refreshSystemMonitorButton_clicked()
     ui->textEdit->clear();
     ui->textEdit->setPlainText(QStringLiteral("Запрос системного монитора по SSH..."));
     runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
-        QStringLiteral("top -b -n 1")});
+        QStringLiteral("top -b -n 1")}, [this](const QString &output) {
+        ui->textEdit->setPlainText(output.isEmpty()
+            ? QStringLiteral("SSH не вернул данные. Проверьте подключение и журнал.")
+            : output);
+    });
 }
 
