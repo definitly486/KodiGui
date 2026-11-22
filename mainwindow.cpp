@@ -3046,39 +3046,11 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
     if (drmFileCheckProcess && drmFileCheckProcess->state() != QProcess::NotRunning)
         drmFileCheckProcess->kill();
 
-    if (!drmFileCheckProcess) {
-        drmFileCheckProcess = new QProcess(this);
-        connect(drmFileCheckProcess,
-                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [this](int exitCode, QProcess::ExitStatus) {
-            const QString output =
-                QString::fromUtf8(drmFileCheckProcess->readAllStandardOutput());
-            if (!output.isEmpty())
-                qInfo().noquote() << "[DRM remote check]" << output.trimmed();
-            qInfo() << "DRM remote check finished; exitCode=" << exitCode;
-
-            if (exitCode == 0 && output.contains("DRM_HLS_READY")) {
-                if (drmFileCheckTimer)
-                    drmFileCheckTimer->stop();
-                QMessageBox::information(this, "DRM",
-                    "HLS-плейлист опубликован.\n"
-                    "Нажмите Play — Kodi откроет поток один раз\n"
-                    "и будет получать новые сегменты по мере загрузки.");
-            } else if (output.contains("DRM_MUX_FAILED")) {
-                if (drmFileCheckTimer)
-                    drmFileCheckTimer->stop();
-                QMessageBox::warning(this, "DRM",
-                    "Публикатор HLS завершился до создания плейлиста.\n\n"
-                    "Последние строки журнала:\n" + output);
-            }
-        });
-    }
-
     if (!drmFileCheckTimer) {
         drmFileCheckTimer = new QTimer(this);
         drmFileCheckTimer->setInterval(1500);
         connect(drmFileCheckTimer, &QTimer::timeout, this, [this, runId, shellQuote]() {
-            if (drmFileCheckProcess->state() != QProcess::NotRunning)
+            if (drmFileCheckRunning)
                 return;
 
             // Ограничиваем ожидание, чтобы при ошибке SSH/загрузчика не проверять бесконечно.
@@ -3092,6 +3064,7 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
             {
                 qInfo() << "Checking remote DRM output and assembler status";
+                drmFileCheckRunning = true;
                 runCommand("ssh", {
                     "pi@192.168.8.45",
                     "if [ -s \"$HOME/kodigui/drm/hls/.run-id\" ] && "
@@ -3110,6 +3083,19 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                     "    fi; "
                     "  fi; "
                     "fi"
+                }, [this](const QString &output) {
+                    drmFileCheckRunning = false;
+                    if (output.contains(QStringLiteral("DRM_HLS_READY"))) {
+                        if (drmFileCheckTimer)
+                            drmFileCheckTimer->stop();
+                        QMessageBox::information(this, "DRM",
+                            "HLS-плейлист опубликован.\nНажмите Play — Kodi откроет поток один раз\nи будет получать новые сегменты по мере загрузки.");
+                    } else if (output.contains(QStringLiteral("DRM_MUX_FAILED"))) {
+                        if (drmFileCheckTimer)
+                            drmFileCheckTimer->stop();
+                        QMessageBox::warning(this, "DRM",
+                            "Публикатор HLS завершился до создания плейлиста.\n\nПоследние строки журнала:\n" + output);
+                    }
                 });
             }
         });
@@ -3438,39 +3424,11 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
     if (drmLegacyFileCheckProcess && drmLegacyFileCheckProcess->state() != QProcess::NotRunning)
         drmLegacyFileCheckProcess->kill();
 
-    if (!drmLegacyFileCheckProcess) {
-        drmLegacyFileCheckProcess = new QProcess(this);
-        connect(drmLegacyFileCheckProcess,
-                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [this](int exitCode, QProcess::ExitStatus) {
-            const QString output =
-                QString::fromUtf8(drmLegacyFileCheckProcess->readAllStandardOutput());
-            if (!output.isEmpty())
-                qInfo().noquote() << "[DRM remote check]" << output.trimmed();
-            qInfo() << "DRM remote check finished; exitCode=" << exitCode;
-
-            if (exitCode == 0 && output.contains("DRM_HLS_READY")) {
-                if (drmLegacyFileCheckTimer)
-                    drmLegacyFileCheckTimer->stop();
-                QMessageBox::information(this, "DRM",
-                    "Новый динамический HLS-плейлист опубликован.\n"
-                    "Нажмите Play — Kodi откроет поток один раз\n"
-                    "и будет получать новые сегменты по мере загрузки.");
-            } else if (output.contains("DRM_MUX_FAILED")) {
-                if (drmLegacyFileCheckTimer)
-                    drmLegacyFileCheckTimer->stop();
-                QMessageBox::warning(this, "DRM",
-                    "Публикатор HLS завершился до создания плейлиста.\n\n"
-                    "Последние строки журнала:\n" + output);
-            }
-        });
-    }
-
     if (!drmLegacyFileCheckTimer) {
         drmLegacyFileCheckTimer = new QTimer(this);
         drmLegacyFileCheckTimer->setInterval(1500);
         connect(drmLegacyFileCheckTimer, &QTimer::timeout, this, [this, runId, shellQuote]() {
-            if (drmLegacyFileCheckProcess->state() != QProcess::NotRunning)
+            if (drmLegacyFileCheckRunning)
                 return;
 
             // Ограничиваем ожидание, чтобы при ошибке SSH/загрузчика не проверять бесконечно.
@@ -3484,6 +3442,7 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
             {
                 qInfo() << "Checking remote DRM output and assembler status";
+                drmLegacyFileCheckRunning = true;
                 runCommand("ssh", {
                     "pi@192.168.8.45",
                     "if [ -s \"$HOME/kodigui/drm/hls/.run-id\" ] && "
@@ -3502,6 +3461,19 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
                     "    fi; "
                     "  fi; "
                     "fi"
+                }, [this](const QString &output) {
+                    drmLegacyFileCheckRunning = false;
+                    if (output.contains(QStringLiteral("DRM_HLS_READY"))) {
+                        if (drmLegacyFileCheckTimer)
+                            drmLegacyFileCheckTimer->stop();
+                        QMessageBox::information(this, "DRM",
+                            "Новый динамический HLS-плейлист опубликован.\nНажмите Play — Kodi откроет поток один раз\nи будет получать новые сегменты по мере загрузки.");
+                    } else if (output.contains(QStringLiteral("DRM_MUX_FAILED"))) {
+                        if (drmLegacyFileCheckTimer)
+                            drmLegacyFileCheckTimer->stop();
+                        QMessageBox::warning(this, "DRM",
+                            "Публикатор HLS завершился до создания плейлиста.\n\nПоследние строки журнала:\n" + output);
+                    }
                 });
             }
         });
