@@ -56,6 +56,31 @@ jobs:
       - name: Build KodiGui
         run: bash ./scripts/build-linux.sh
 
+      - name: Set up Python for bundled Streamlink
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build standalone Streamlink runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install streamlink pyinstaller
+          cat > "$RUNNER_TEMP/kodigui_streamlink_entry.py" <<'PY'
+          from streamlink_cli.main import main
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PY
+          mkdir -p runtime
+          python -m PyInstaller --noconfirm --clean --onefile --console \
+            --name streamlink --distpath runtime \
+            --workpath "$RUNNER_TEMP/streamlink-build" \
+            --specpath "$RUNNER_TEMP" \
+            --collect-all streamlink --collect-all streamlink_cli \
+            --collect-all certifi "$RUNNER_TEMP/kodigui_streamlink_entry.py"
+          test -x runtime/streamlink
+          ./runtime/streamlink --version
+
       - name: Check executable dependencies
         run: |
           test -x ./kodigui
@@ -69,6 +94,7 @@ jobs:
         run: |
           mkdir -p dist/kodigui-linux-x86_64
           install -m 0755 ./kodigui dist/kodigui-linux-x86_64/kodigui
+          install -D -m 0755 runtime/streamlink dist/kodigui-linux-x86_64/runtime/streamlink
           cp README.md dist/kodigui-linux-x86_64/README.md
           cp ldd-report.txt dist/kodigui-linux-x86_64/
           tar -C dist -czf kodigui-linux-x86_64.tar.gz kodigui-linux-x86_64
