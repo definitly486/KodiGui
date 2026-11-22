@@ -38,7 +38,7 @@ vcpkg install libssh2:x64-windows
 ./scripts/build-windows.ps1
 ```
 
-Make sure the vcpkg include and library directories are available through `INCLUDE` and `LIB` before running the script. The executable is created as `./kodigui.exe`. The Windows workflow deploys Qt runtime files and packages a portable `kodigui-windows-x86_64.zip`. The archive does not contain Widevine, a `.wvd` device file, account cookies, or other credentials. Windows builds use Winsock for the libssh2 SFTP connection and use the Windows `python.exe` name for the local Match TV helper. Install the Windows OpenSSH Client and configure key-based access to the configured Kodi host if `sshpass` is not installed; KodiGui then uses OpenSSH for start/stop/reboot and system-monitor actions. The Linux-only POSIX stdout/stderr pipe integration is disabled on Windows; normal process diagnostics remain available.
+Make sure the vcpkg include and library directories are available through `INCLUDE` and `LIB` before running the script. The executable is created as `./kodigui.exe`. The Windows workflow deploys Qt runtime files and packages a portable `kodigui-windows-x86_64.zip`. The archive does not contain Widevine, a `.wvd` device file, account cookies, or other credentials. Windows builds use Winsock for the libssh2 SFTP connection and use the Windows `python.exe` name for the local Match TV helper. KodiGui uses its embedded libssh2 client for remote commands and SFTP; a system OpenSSH Client, PuTTY, and `sshpass` are not required. Configure the SSH host, port, username, password, or private-key path in the application's **Настройки** tab. The Linux-only POSIX stdout/stderr pipe integration is disabled on Windows; normal process diagnostics remain available.
 
 ## Okko and Widevine DRM
 
@@ -118,10 +118,10 @@ Do not post diagnostic logs, screenshots, MPD URLs, account cookies, device file
 - Run from a graphical Linux desktop session (X11 or XWayland).
 - Qt WebEngine is required for the embedded Okko browser and other embedded web playback.
 - Python 3 is detected from `PATH` when the Match TV helper is started.
-- Remote Kodi operations use OpenSSH. Install `openssh-client`; password-based SSH actions may also require `sshpass`.
+- Remote Kodi commands and SFTP transfers use the libssh2 library embedded at build time. No local `ssh`, `sshpass`, or PuTTY executable is needed. Configure the target and credentials in the **Настройки** tab.
 - The **Info** button on the URL page uses the Streamlink executable bundled in `runtime/` in the release archive; no system Python or Streamlink installation is required for that button. Other Streamlink actions on the YouTube and Match TV pages are unchanged.
 - Other streaming helpers such as `yt-dlp`, `ffmpeg` and `N_m3u8DL-RE` must be installed on the machine where the corresponding commands are executed.
-- The application connects to the configured Kodi/Raspberry Pi host over SSH and Kodi JSON-RPC. Update the host/user settings in the source before using it on a different network.
+- The application connects to the configured Kodi/Raspberry Pi host over SSH and Kodi JSON-RPC. Set the SSH host, port, username, password, or private-key path in the **Настройки** tab before connecting to another Kodi device.
 - Widevine playback requires a separately supplied compatible CDM. Set `KODIGUI_WIDEVINE_PATH` to its `libwidevinecdm.so` path, or place it at `~/.local/share/KodiGui/widevine/libwidevinecdm.so`. No Widevine binary is bundled.
 
 ## GitHub Actions
