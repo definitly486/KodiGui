@@ -1499,10 +1499,11 @@ void MainWindow::clearLineEditField(QLineEdit *edit, const QString &placeholder)
 // ---------------------------------------------------------------------
 bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
 {
-    const QString host = "192.168.8.45";
-    const int port = 22;
-    const QString user = "pi";
-    const QString password = "639639";
+    QSettings sshSettings(QStringLiteral("definitly486"), QStringLiteral("KodiGui"));
+    const QString host = sshSettings.value(QStringLiteral("ssh/host"), QStringLiteral("192.168.8.45")).toString();
+    const int port = sshSettings.value(QStringLiteral("ssh/port"), 22).toInt();
+    const QString user = sshSettings.value(QStringLiteral("ssh/user"), QStringLiteral("pi")).toString();
+    const QString password = sshSettings.value(QStringLiteral("ssh/password"), QStringLiteral("639639")).toString();
 
 #ifdef Q_OS_WIN
     const SOCKET sock = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -3070,7 +3071,7 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
             {
                 qInfo() << "Checking remote DRM output and assembler status";
-                drmFileCheckProcess->start("ssh", {
+                runCommand("ssh", {
                     "pi@192.168.8.45",
                     "if [ -s \"$HOME/kodigui/drm/hls/.run-id\" ] && "
                     "   [ \"$(cat \"$HOME/kodigui/drm/hls/.run-id\" 2>/dev/null)\" = " + shellQuote(runId) + " ]; then "
@@ -3462,7 +3463,7 @@ echo "[$(ts)] HLS publisher finished" >> "$LOG"
 
             {
                 qInfo() << "Checking remote DRM output and assembler status";
-                drmLegacyFileCheckProcess->start("ssh", {
+                runCommand("ssh", {
                     "pi@192.168.8.45",
                     "if [ -s \"$HOME/kodigui/drm/hls/.run-id\" ] && "
                     "   [ \"$(cat \"$HOME/kodigui/drm/hls/.run-id\" 2>/dev/null)\" = " + shellQuote(runId) + " ]; then "
@@ -3570,33 +3571,9 @@ void MainWindow::on_closePopupButton_clicked()
 
 void MainWindow::on_refreshSystemMonitorButton_clicked()
 {
-    QProcess *process = new QProcess(this);
-
-    connect(process, &QProcess::readyReadStandardOutput, this, [=]() {
-        QByteArray data = process->readAllStandardOutput();
-        if (!data.isEmpty())
-            qInfo().noquote() << "[Monitor stdout]" << QString::fromUtf8(data).trimmed();
-        ui->textEdit->append(QString::fromUtf8(data));
-    });
-
-    connect(process, &QProcess::readyReadStandardError, this, [=]() {
-        QByteArray data = process->readAllStandardError();
-        if (!data.isEmpty())
-            qWarning().noquote() << "[Monitor stderr]" << QString::fromUtf8(data).trimmed();
-        ui->textEdit->append(QString::fromUtf8(data));
-    });
-
-    QString program;
-    QStringList arguments;
-    if (QStandardPaths::findExecutable(QStringLiteral("sshpass")).isEmpty()) {
-        program = QStringLiteral("ssh");
-        arguments << "pi@192.168.8.45" << "top -b -n 1";
-    } else {
-        program = QStringLiteral("sshpass");
-        arguments << "-p" << "639639" << "ssh"
-                  << "pi@192.168.8.45" << "top -b -n 1";
-    }
     ui->textEdit->clear();
-    process->start(program, arguments);
+    ui->textEdit->setPlainText(QStringLiteral("Запрос системного монитора по SSH..."));
+    runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"),
+        QStringLiteral("top -b -n 1")});
 }
 
