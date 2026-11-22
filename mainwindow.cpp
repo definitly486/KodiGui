@@ -1743,6 +1743,10 @@ void MainWindow::on_startKodidlpButton_clicked()
                          safeThis,
                          [safeThis, probe, input, streamlinkProgram, finish]
                          (int, QProcess::ExitStatus) {
+            if (probe->property("kodidlpTimedOut").toBool()) {
+                probe->deleteLater();
+                return;
+            }
             const QByteArray probeOutput =
                 probe->readAllStandardOutput() + "\n" + probe->readAllStandardError();
             probe->deleteLater();
@@ -1772,6 +1776,10 @@ void MainWindow::on_startKodidlpButton_clicked()
                              QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                              safeThis,
                              [safeThis, resolve, finish](int exitCode, QProcess::ExitStatus status) {
+                if (resolve->property("kodidlpTimedOut").toBool()) {
+                    resolve->deleteLater();
+                    return;
+                }
                 const QString streamUrl = QString::fromLocal8Bit(
                     resolve->readAllStandardOutput()).trimmed();
                 const QString errors = QString::fromLocal8Bit(
@@ -1909,6 +1917,7 @@ void MainWindow::on_startKodidlpButton_clicked()
             resolve->start();
             QTimer::singleShot(120000, resolve, [resolve, finish]() {
                 if (resolve->state() != QProcess::NotRunning) {
+                    resolve->setProperty("kodidlpTimedOut", true);
                     resolve->kill();
                     finish(QStringLiteral("[Streamlink: превышено время ожидания получения URL]"),
                            false);
@@ -1926,6 +1935,7 @@ void MainWindow::on_startKodidlpButton_clicked()
         probe->start();
         QTimer::singleShot(45000, probe, [probe, finish]() {
             if (probe->state() != QProcess::NotRunning) {
+                probe->setProperty("kodidlpTimedOut", true);
                 probe->kill();
                 finish(QStringLiteral("[Streamlink: превышено время ожидания списка качеств]"),
                        false);
