@@ -86,12 +86,19 @@ jobs:
           # Qt WebEngine and its bundled third-party libraries may depend on
           # libz.dll. windeployqt does not always collect non-Qt DLLs, so locate
           # and package the exact runtime explicitly.
-          $runtimeRoots = @(
-            $env:QT_ROOT_DIR,
-            (Split-Path -Parent $env:Qt6_DIR),
-            (Split-Path -Parent $env:Qt6_DIR | Split-Path -Parent),
-            (Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\x64-windows")
-          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+          $runtimeRoots = @()
+          if ($env:QT_ROOT_DIR) { $runtimeRoots += $env:QT_ROOT_DIR }
+          if ($env:Qt6_DIR) {
+            $qtDir = $env:Qt6_DIR
+            for ($i = 0; $i -lt 4; $i++) { $qtDir = Split-Path -Parent $qtDir }
+            $runtimeRoots += $qtDir
+          }
+          if ($env:VCPKG_INSTALLATION_ROOT) {
+            $runtimeRoots += (Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\x64-windows")
+          }
+          $runtimeRoots = $runtimeRoots |
+            Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
+            Select-Object -Unique
           $libz = $null
           foreach ($runtimeRoot in $runtimeRoots) {
             $libz = Get-ChildItem -LiteralPath $runtimeRoot -Filter "libz.dll" -File -Recurse -ErrorAction SilentlyContinue |
