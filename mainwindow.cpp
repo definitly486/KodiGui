@@ -15,6 +15,7 @@
 #include <QRegularExpression>
 #include <QMessageBox>
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 #include <QTextCursor>
 #include <QDir>
@@ -1707,42 +1708,76 @@ void MainWindow::on_startKodidlpButton_clicked()
 
 void MainWindow::on_showStreamlinkInfoButton_clicked()
 {
-    // Получаем текст из lineEdit (с заменой vksport-ссылок на vk.ru)
-    QString input = currentKodidlpUrl();
-
-    qDebug() << input;
-
-    QProcess process;
-    // Формируем аргументы для streamlink
-    QStringList arguments;
-    arguments << input;
-
-    // Указываем программу
-    process.setProgram("streamlink");
-    process.setArguments(arguments);
-
-    // Запуск процесса
-    qInfo() << "Starting streamlink:" << process.program() << arguments;
-    process.start();
-
-    if (!process.waitForFinished()) {
-        qCritical() << "streamlink failed:" << process.errorString();
-        ui->textEdit_info->setText("Ошибка выполнения процесса");
+    // Only the URL-page Info action uses KodiGui's bundled local Streamlink.
+    // Streamlink actions on the YouTube and Match TV pages remain remote and unchanged.
+    const QString input = currentKodidlpUrl().trimmed();
+    if (input.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Streamlink"),
+                             QStringLiteral("Введите URL."));
         return;
     }
 
-    // Чтение вывода (stdout)
-    QString output = process.readAllStandardOutput();
-    qInfo().noquote() << "[streamlink stdout]" << output.trimmed();
+#ifdef Q_OS_WIN
+    const QString bundledName = QStringLiteral("streamlink.exe");
+#else
+    const QString bundledName = QStringLiteral("streamlink");
+#endif
+    const QString bundledProgram =
+        QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("runtime/") + bundledName);
 
-    // Если нужно — читаем ошибки
-    QString errorOutput = process.readAllStandardError();
+    QString program;
+    if (QFileInfo(bundledProgram).isExecutable()) {
+        program = bundledProgram;
+    } else {
+        // Development fallback only; release archives ship the bundled runtime.
+        program = QStandardPaths::findExecutable(QStringLiteral("streamlink"));
+    }
+
+    if (program.isEmpty()) {
+        const QString message =
+            QStringLiteral("Встроенный Streamlink не найден (%1). "
+                           "Скачайте полный архив KodiGui или установите Streamlink в PATH.")
+                .arg(bundledProgram);
+        ui->textEdit_info->setPlainText(message);
+        QMessageBox::warning(this, QStringLiteral("Streamlink"), message);
+        return;
+    }
+
+    QProcess process;
+    process.setProgram(program);
+    process.setArguments({input});
+    process.setWorkingDirectory(QCoreApplication::applicationDirPath());
+
+    qInfo() << "Starting local Streamlink Info process:" << program << input;
+    process.start();
+    if (!process.waitForStarted(15000)) {
+        const QString message =
+            QStringLiteral("Не удалось запустить Streamlink: %1").arg(process.errorString());
+        ui->textEdit_info->setPlainText(message);
+        qWarning().noquote() << message;
+        return;
+    }
+
+    if (!process.waitForFinished(120000)) {
+        process.kill();
+        process.waitForFinished(5000);
+        const QString message = QStringLiteral("Streamlink не завершился за 120 секунд.");
+        ui->textEdit_info->setPlainText(message);
+        qWarning().noquote() << message;
+        return;
+    }
+
+    const QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
+    const QString errorOutput = QString::fromLocal8Bit(process.readAllStandardError());
+    qInfo().noquote() << "[streamlink stdout]" << output.trimmed();
     if (!errorOutput.isEmpty())
         qWarning().noquote() << "[streamlink stderr]" << errorOutput.trimmed();
-    qInfo() << "streamlink finished; exitCode=" << process.exitCode();
+    qInfo() << "Streamlink Info finished; exitCode=" << process.exitCode();
 
-    // Выводим в textEdit
-    ui->textEdit_info->setText(output + "\n" + errorOutput);
+    ui->textEdit_info->setPlainText(
+        output + (output.isEmpty() || errorOutput.isEmpty() ? QString() : QStringLiteral("\n"))
+        + errorOutput);
 }
 
 QString MainWindow::currentKodidlpUrl()
