@@ -23,6 +23,8 @@
 #include <functional>
 #include <QtConcurrent>
 #include <QFuture>
+#include <QFutureWatcher>
+#include <QCoreApplication>
 #include <QPointer>
 #include <QDateTime>
 #include <QMetaObject>
@@ -36,6 +38,7 @@
 #include <QIcon>
 #include <QComboBox>
 #include <QSettings>
+#include <QTcpSocket>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
