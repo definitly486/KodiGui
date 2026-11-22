@@ -1689,7 +1689,7 @@ void MainWindow::on_startKodidlpButton_clicked()
         QDir(QCoreApplication::applicationDirPath())
             .filePath(QStringLiteral("runtime/") + streamlinkName);
     QString streamlinkProgram;
-    if (QFileInfo::isFile(bundledStreamlink)) {
+    if (QFileInfo(bundledStreamlink).isFile()) {
         streamlinkProgram = bundledStreamlink;
     } else {
         streamlinkProgram = QStandardPaths::findExecutable(streamlinkName);
