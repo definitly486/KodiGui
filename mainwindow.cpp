@@ -220,57 +220,51 @@ MainWindow::MainWindow(QWidget *parent)
             : QStringLiteral("font-weight: 600; color: #d45b5b;"));
     };
 
-    connect(drmProcessStatusProcess,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
-        if (exitStatus != QProcess::NormalExit || exitCode != 0) {
-            const QString unavailable = QStringLiteral("нет связи");
-            for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
-                                  ffmpegStatusLabel, nM3u8StatusLabel}) {
-                label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
-                               + QStringLiteral(": ") + unavailable);
-                label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
-            }
-            return;
-        }
-
-        const QString output = QString::fromUtf8(
-            drmProcessStatusProcess->readAllStandardOutput()).trimmed();
-        setDrmProcessStatus(ytDlpStatusLabel, QStringLiteral("yt-dlp"),
-                            output.contains(QStringLiteral("yt-dlp=1")));
-        setDrmProcessStatus(streamlinkStatusLabel, QStringLiteral("streamlink"),
-                            output.contains(QStringLiteral("streamlink=1")));
-        setDrmProcessStatus(ffmpegStatusLabel, QStringLiteral("ffmpeg"),
-                            output.contains(QStringLiteral("ffmpeg=1")));
-        setDrmProcessStatus(nM3u8StatusLabel, QStringLiteral("N_m3u8DL-+"),
-                            output.contains(QStringLiteral("N_m3u8DL-+=1")));
-    });
-
-    connect(drmProcessStatusProcess, &QProcess::errorOccurred, this,
-            [=](QProcess::ProcessError) {
+    auto drmStatusRequestInProgress = std::make_shared<bool>(false);
+    auto setDrmConnectionUnavailable = [=]() {
         for (QLabel *label : {ytDlpStatusLabel, streamlinkStatusLabel,
                               ffmpegStatusLabel, nM3u8StatusLabel}) {
             label->setText(label->objectName().remove(QStringLiteral("DrmProcessStatus"))
                            + QStringLiteral(": нет связи"));
             label->setStyleSheet(QStringLiteral("font-weight: 600; color: #b58900;"));
         }
-    });
+    };
 
     auto checkDrmProcesses = [=]() {
-        if (drmProcessStatusProcess->state() != QProcess::NotRunning)
+        if (*drmStatusRequestInProgress)
             return;
-        drmProcessStatusProcess->start(QStringLiteral("ssh"), {
-            QStringLiteral("pi@192.168.8.45"),
-            QStringLiteral("for name in yt-dlp streamlink ffmpeg N_m3u8DL-+; do "
-                           "pattern=$name; case $name in N_m3u8DL-+) pattern=N_m3u8DL ;; esac; "
-                           "found=0; "
-                           "for file in /proc/[0-9]*/cmdline; do "
-                           "pid=${file#/proc/}; pid=${pid%/cmdline}; "
-                           "[ $pid = $$ ] && continue; "
-                           "[ $pid = $PPID ] && continue; "
-                           "cmd=$(tr '\\000' ' ' < $file 2>/dev/null) || continue; "
-                           "case $cmd in *$pattern*) found=1; break ;; esac; "
-                           "done; echo $name=$found; done")
+        *drmStatusRequestInProgress = true;
+        const QString remoteCommand =
+            "for name in yt-dlp streamlink ffmpeg N_m3u8DL-+; do "
+            "pattern=$name; case $name in N_m3u8DL-+) pattern=N_m3u8DL ;; esac; "
+            "found=0; "
+            "for file in /proc/[0-9]*/cmdline; do "
+            "pid=${file#/proc/}; pid=${pid%/cmdline}; "
+            "[ $pid = $$ ] && continue; "
+            "[ $pid = $PPID ] && continue; "
+            "cmd=$(tr '\\000' ' ' < $file 2>/dev/null) || continue; "
+            "case $cmd in *$pattern*) found=1; break ;; esac; "
+            "done; echo $name=$found; done";
+        runCommand(QStringLiteral("ssh"), {remoteCommand},
+                   [=](const QString &output) {
+            *drmStatusRequestInProgress = false;
+            if (output.startsWith(QStringLiteral("SSH connection failed")) ||
+                output.startsWith(QStringLiteral("SSH authentication failed")) ||
+                output.startsWith(QStringLiteral("SSH handshake failed")) ||
+                output.startsWith(QStringLiteral("SSH command start failed")) ||
+                output.startsWith(QStringLiteral("libssh2"))) {
+                setDrmConnectionUnavailable();
+                return;
+            }
+            const QString result = output.trimmed();
+            setDrmProcessStatus(ytDlpStatusLabel, QStringLiteral("yt-dlp"),
+                                result.contains(QStringLiteral("yt-dlp=1")));
+            setDrmProcessStatus(streamlinkStatusLabel, QStringLiteral("streamlink"),
+                                result.contains(QStringLiteral("streamlink=1")));
+            setDrmProcessStatus(ffmpegStatusLabel, QStringLiteral("ffmpeg"),
+                                result.contains(QStringLiteral("ffmpeg=1")));
+            setDrmProcessStatus(nM3u8StatusLabel, QStringLiteral("N_m3u8DL-+"),
+                                result.contains(QStringLiteral("N_m3u8DL-+=1")));
         });
     };
     connect(drmProcessStatusTimer, &QTimer::timeout, this, checkDrmProcesses);
@@ -327,7 +321,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
 
         auto *youtubeStatusTimer = new QTimer(this);
-        auto *youtubeStatusProcess = new QProcess(this);
+        auto youtubeStatusRequestInProgress = std::make_shared<bool>(false);
         youtubeStatusTimer->setInterval(2500);
 
         auto setYoutubeProcessStatus = [](QLabel *label, const QString &name, bool running) {
@@ -348,36 +342,33 @@ MainWindow::MainWindow(QWidget *parent)
             }
         };
 
-        connect(youtubeStatusProcess,
-                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
-            if (exitStatus != QProcess::NormalExit || exitCode != 0) {
-                setYoutubeConnectionUnavailable();
-                return;
-            }
-
-            const QString output = QString::fromUtf8(
-                youtubeStatusProcess->readAllStandardOutput()).trimmed();
-            setYoutubeProcessStatus(youtubeYtDlpStatusLabel, QStringLiteral("yt-dlp"),
-                                    output.contains(QStringLiteral("yt-dlp=1")));
-            setYoutubeProcessStatus(youtubeStreamlinkStatusLabel, QStringLiteral("streamlink"),
-                                    output.contains(QStringLiteral("streamlink=1")));
-            setYoutubeProcessStatus(youtubeFfmpegStatusLabel, QStringLiteral("ffmpeg"),
-                                    output.contains(QStringLiteral("ffmpeg=1")));
-        });
-
-        connect(youtubeStatusProcess, &QProcess::errorOccurred, this,
-                [=](QProcess::ProcessError) { setYoutubeConnectionUnavailable(); });
-
         auto checkYoutubeProcesses = [=]() {
-            if (youtubeStatusProcess->state() != QProcess::NotRunning)
+            if (*youtubeStatusRequestInProgress)
                 return;
-            youtubeStatusProcess->start(QStringLiteral("ssh"), {
-                QStringLiteral("pi@192.168.8.45"),
-                QStringLiteral("for name in yt-dlp streamlink ffmpeg; do "
-                               "ps -eo comm= | awk -v n=$name "
-                               "'$1 == n {found=1} END {print n \"=\" (found ? 1 : 0)}'; "
-                               "done")
+            *youtubeStatusRequestInProgress = true;
+            const QString remoteCommand =
+                "for name in yt-dlp streamlink ffmpeg; do "
+                "ps -eo comm= | awk -v n=$name "
+                "'$1 == n {found=1} END {print n \"=\" (found ? 1 : 0)}'; "
+                "done";
+            runCommand(QStringLiteral("ssh"), {remoteCommand},
+                       [=](const QString &output) {
+                *youtubeStatusRequestInProgress = false;
+                if (output.startsWith(QStringLiteral("SSH connection failed")) ||
+                    output.startsWith(QStringLiteral("SSH authentication failed")) ||
+                    output.startsWith(QStringLiteral("SSH handshake failed")) ||
+                    output.startsWith(QStringLiteral("SSH command start failed")) ||
+                    output.startsWith(QStringLiteral("libssh2"))) {
+                    setYoutubeConnectionUnavailable();
+                    return;
+                }
+                const QString result = output.trimmed();
+                setYoutubeProcessStatus(youtubeYtDlpStatusLabel, QStringLiteral("yt-dlp"),
+                                        result.contains(QStringLiteral("yt-dlp=1")));
+                setYoutubeProcessStatus(youtubeStreamlinkStatusLabel, QStringLiteral("streamlink"),
+                                        result.contains(QStringLiteral("streamlink=1")));
+                setYoutubeProcessStatus(youtubeFfmpegStatusLabel, QStringLiteral("ffmpeg"),
+                                        result.contains(QStringLiteral("ffmpeg=1")));
             });
         };
 
