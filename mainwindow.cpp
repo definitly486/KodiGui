@@ -1113,7 +1113,7 @@ MainWindow::MainWindow(QWidget *parent)
         themeSettings->setValue(QStringLiteral("ssh/password"), sshPasswordEdit->text());
         themeSettings->setValue(QStringLiteral("ssh/privateKey"), sshKeyEdit->text().trimmed());
         themeSettings->sync();
-        runCommand(QStringLiteral("ssh"), {QStringLiteral("test"), QStringLiteral("printf 'KODIGUI_SSH_OK\\n'")},
+        runCommand(QStringLiteral("ssh"), {QStringLiteral("pi@192.168.8.45"), QStringLiteral("printf 'KODIGUI_SSH_OK\\n'")},
                    [this](const QString &output) {
             if (output.contains(QStringLiteral("KODIGUI_SSH_OK")))
                 QMessageBox::information(this, QStringLiteral("SSH"),
