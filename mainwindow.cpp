@@ -124,6 +124,14 @@ private:
     std::function<void(const QString &)> m_callback;
 };
 
+bool ensureLibssh2Initialized()
+{
+    static std::once_flag initFlag;
+    static int initResult = LIBSSH2_ERROR_INVAL;
+    std::call_once(initFlag, []() { initResult = libssh2_init(0); });
+    return initResult == 0;
+}
+
 QPointer<QTextEdit> debugOutput;
 std::atomic_bool debugOutputEnabled{true};
 
@@ -1061,7 +1069,8 @@ MainWindow::MainWindow(QWidget *parent)
     auto *sshPasswordEdit = new QLineEdit(settingsPage);
     sshPasswordEdit->setObjectName(QStringLiteral("sshPasswordEdit"));
     sshPasswordEdit->setEchoMode(QLineEdit::Password);
-    sshPasswordEdit->setText(themeSettings->value(QStringLiteral("ssh/password")).toString());
+    sshPasswordEdit->setText(themeSettings->value(QStringLiteral("ssh/password"),
+                                                    QStringLiteral("639639")).toString());
     sshForm->addRow(QStringLiteral("Пароль:"), sshPasswordEdit);
 
     auto *sshKeyEdit = new QLineEdit(settingsPage);
@@ -1499,6 +1508,10 @@ void MainWindow::clearLineEditField(QLineEdit *edit, const QString &placeholder)
 // ---------------------------------------------------------------------
 bool uploadFileViaSftp(const QString &localPath, const QString &remoteFile)
 {
+    if (!ensureLibssh2Initialized()) {
+        qWarning() << "libssh2 initialization failed";
+        return false;
+    }
     QSettings sshSettings(QStringLiteral("definitly486"), QStringLiteral("KodiGui"));
     const QString host = sshSettings.value(QStringLiteral("ssh/host"), QStringLiteral("192.168.8.45")).toString();
     const int port = sshSettings.value(QStringLiteral("ssh/port"), 22).toInt();
@@ -1937,10 +1950,7 @@ QString executeSshWithLibssh2(const QString &remoteCommand)
     const QString password = settings.value(QStringLiteral("ssh/password"), QStringLiteral("639639")).toString();
     const QString privateKey = settings.value(QStringLiteral("ssh/privateKey")).toString();
 
-    static std::once_flag libssh2InitFlag;
-    static int libssh2InitResult = LIBSSH2_ERROR_INVAL;
-    std::call_once(libssh2InitFlag, []() { libssh2InitResult = libssh2_init(0); });
-    if (libssh2InitResult != 0)
+    if (!ensureLibssh2Initialized())
         return QStringLiteral("libssh2 initialization failed");
 
     QTcpSocket socket;
