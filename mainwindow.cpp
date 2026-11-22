@@ -52,6 +52,7 @@
 #include <QIcon>
 #include <QComboBox>
 #include <QSettings>
+#include <QTcpSocket>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -1029,6 +1030,76 @@ MainWindow::MainWindow(QWidget *parent)
     okkoMpdUrlCheckBox->setChecked(showOkkoMpdUrl);
     settingsLayout->addWidget(okkoMpdUrlCheckBox);
 
+    // SSH connection settings. Remote commands use the in-process libssh2 client.
+    auto *sshTitle = new QLabel(QStringLiteral("SSH-подключение"), settingsPage);
+    QFont sshFont = sshTitle->font();
+    sshFont.setPointSize(14);
+    sshFont.setBold(true);
+    sshTitle->setFont(sshFont);
+    settingsLayout->addWidget(sshTitle);
+
+    auto *sshForm = new QFormLayout();
+    auto *sshHostEdit = new QLineEdit(settingsPage);
+    sshHostEdit->setObjectName(QStringLiteral("sshHostEdit"));
+    sshHostEdit->setPlaceholderText(QStringLiteral("192.168.8.45"));
+    sshHostEdit->setText(themeSettings->value(QStringLiteral("ssh/host"),
+                                               QStringLiteral("192.168.8.45")).toString());
+    sshForm->addRow(QStringLiteral("Адрес:"), sshHostEdit);
+
+    auto *sshPortEdit = new QLineEdit(settingsPage);
+    sshPortEdit->setObjectName(QStringLiteral("sshPortEdit"));
+    sshPortEdit->setText(themeSettings->value(QStringLiteral("ssh/port"), 22).toString());
+    sshForm->addRow(QStringLiteral("Порт:"), sshPortEdit);
+
+    auto *sshUserEdit = new QLineEdit(settingsPage);
+    sshUserEdit->setObjectName(QStringLiteral("sshUserEdit"));
+    sshUserEdit->setText(themeSettings->value(QStringLiteral("ssh/user"),
+                                               QStringLiteral("pi")).toString());
+    sshForm->addRow(QStringLiteral("Пользователь:"), sshUserEdit);
+
+    auto *sshPasswordEdit = new QLineEdit(settingsPage);
+    sshPasswordEdit->setObjectName(QStringLiteral("sshPasswordEdit"));
+    sshPasswordEdit->setEchoMode(QLineEdit::Password);
+    sshPasswordEdit->setText(themeSettings->value(QStringLiteral("ssh/password")).toString());
+    sshForm->addRow(QStringLiteral("Пароль:"), sshPasswordEdit);
+
+    auto *sshKeyEdit = new QLineEdit(settingsPage);
+    sshKeyEdit->setObjectName(QStringLiteral("sshPrivateKeyEdit"));
+    sshKeyEdit->setPlaceholderText(QStringLiteral("Путь к приватному ключу (необязательно)"));
+    sshKeyEdit->setText(themeSettings->value(QStringLiteral("ssh/privateKey")).toString());
+    sshForm->addRow(QStringLiteral("SSH-ключ:"), sshKeyEdit);
+    settingsLayout->addLayout(sshForm);
+
+    auto *sshSaveButton = new QPushButton(QStringLiteral("Сохранить SSH-настройки"), settingsPage);
+    sshSaveButton->setObjectName(QStringLiteral("saveSshSettingsButton"));
+    settingsLayout->addWidget(sshSaveButton);
+    auto *sshHint = new QLabel(
+        QStringLiteral("Команды выполняются встроенным libssh2. Системные ssh и sshpass не требуются. "
+                       "Пароль сохраняется в пользовательских настройках приложения."),
+        settingsPage);
+    sshHint->setWordWrap(true);
+    settingsLayout->addWidget(sshHint);
+
+    connect(sshSaveButton, &QPushButton::clicked, this,
+            [themeSettings, sshHostEdit, sshPortEdit, sshUserEdit, sshPasswordEdit, sshKeyEdit]() {
+        bool portOk = false;
+        const int port = sshPortEdit->text().trimmed().toInt(&portOk);
+        if (sshHostEdit->text().trimmed().isEmpty() ||
+            sshUserEdit->text().trimmed().isEmpty() || !portOk || port < 1 || port > 65535) {
+            QMessageBox::warning(nullptr, QStringLiteral("SSH"),
+                                 QStringLiteral("Проверьте адрес, пользователя и порт SSH (1–65535)."));
+            return;
+        }
+        themeSettings->setValue(QStringLiteral("ssh/host"), sshHostEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/port"), port);
+        themeSettings->setValue(QStringLiteral("ssh/user"), sshUserEdit->text().trimmed());
+        themeSettings->setValue(QStringLiteral("ssh/password"), sshPasswordEdit->text());
+        themeSettings->setValue(QStringLiteral("ssh/privateKey"), sshKeyEdit->text().trimmed());
+        themeSettings->sync();
+        QMessageBox::information(nullptr, QStringLiteral("SSH"),
+                                 QStringLiteral("SSH-настройки сохранены."));
+    });
+
     settingsLayout->addStretch(1);
     ui->tabWidget->addTab(settingsPage, style()->standardIcon(QStyle::SP_DesktopIcon),
                           QStringLiteral("Настройки"));
@@ -1895,14 +1966,112 @@ void MainWindow::on_playYoutubeFileButton_clicked()
 }
 
 
-void runCommand(const QString &command, const QStringList &args) {
-    // Неблокирующий запуск: UI не замирает
-    const bool ok = QProcess::startDetached(command, args);
-    if (!ok) {
-        qWarning() << "Не удалось запустить:" << command << args;
+namespace {
+QString executeSshWithLibssh2(const QString &remoteCommand)
+{
+    QSettings settings(QStringLiteral("definitly486"), QStringLiteral("KodiGui"));
+    const QString host = settings.value(QStringLiteral("ssh/host"), QStringLiteral("192.168.8.45")).toString();
+    const int port = settings.value(QStringLiteral("ssh/port"), 22).toInt();
+    const QString user = settings.value(QStringLiteral("ssh/user"), QStringLiteral("pi")).toString();
+    const QString password = settings.value(QStringLiteral("ssh/password"), QStringLiteral("639639")).toString();
+    const QString privateKey = settings.value(QStringLiteral("ssh/privateKey")).toString();
+
+    QTcpSocket socket;
+    socket.connectToHost(host, static_cast<quint16>(port));
+    if (!socket.waitForConnected(10000))
+        return QStringLiteral("SSH connection failed: %1").arg(socket.errorString());
+
+    LIBSSH2_SESSION *session = libssh2_session_init();
+    if (!session)
+        return QStringLiteral("libssh2: cannot create session");
+    libssh2_session_set_blocking(session, 1);
+    libssh2_session_set_timeout(session, 15000);
+
+    QString error;
+    const auto socketHandle = static_cast<libssh2_socket_t>(socket.socketDescriptor());
+    if (libssh2_session_handshake(session, socketHandle) != 0) {
+        error = QStringLiteral("SSH handshake failed: %1")
+                    .arg(QString::fromLatin1(libssh2_session_last_error(session, nullptr, nullptr, 0)));
     } else {
-        qDebug() << "Команда запущена (detached):" << command << args;
+        int authResult = -1;
+        if (!privateKey.isEmpty()) {
+            authResult = libssh2_userauth_publickey_fromfile(
+                session, user.toUtf8().constData(), nullptr,
+                QFile::encodeName(privateKey).constData(),
+                password.toUtf8().constData());
+        } else if (!password.isEmpty()) {
+            authResult = libssh2_userauth_password(
+                session, user.toUtf8().constData(), password.toUtf8().constData());
+        }
+        if (authResult != 0) {
+            error = QStringLiteral("SSH authentication failed: %1")
+                        .arg(QString::fromLatin1(libssh2_session_last_error(session, nullptr, nullptr, 0)));
+        }
     }
+
+    LIBSSH2_CHANNEL *channel = nullptr;
+    QByteArray output;
+    if (error.isEmpty()) {
+        channel = libssh2_channel_open_session(session);
+        if (!channel || libssh2_channel_exec(channel, remoteCommand.toUtf8().constData()) != 0) {
+            error = QStringLiteral("SSH command start failed: %1")
+                        .arg(QString::fromLatin1(libssh2_session_last_error(session, nullptr, nullptr, 0)));
+        } else {
+            char buffer[8192];
+            for (;;) {
+                const ssize_t count = libssh2_channel_read(channel, buffer, sizeof(buffer));
+                if (count > 0) {
+                    output.append(buffer, static_cast<qsizetype>(count));
+                    continue;
+                }
+                if (count == LIBSSH2_ERROR_EAGAIN)
+                    continue;
+                break;
+            }
+            for (;;) {
+                const ssize_t count = libssh2_channel_read_stderr(channel, buffer, sizeof(buffer));
+                if (count > 0) {
+                    output.append(buffer, static_cast<qsizetype>(count));
+                    continue;
+                }
+                if (count == LIBSSH2_ERROR_EAGAIN)
+                    continue;
+                break;
+            }
+            libssh2_channel_close(channel);
+            libssh2_channel_free(channel);
+        }
+    }
+
+    libssh2_session_disconnect(session, "KodiGui closing");
+    libssh2_session_free(session);
+    socket.disconnectFromHost();
+    if (!error.isEmpty())
+        return error;
+    return QString::fromUtf8(output);
+}
+} // namespace
+
+void runCommand(const QString &command, const QStringList &args)
+{
+    if (command.compare(QStringLiteral("ssh"), Qt::CaseInsensitive) != 0) {
+        qWarning() << "External command is not allowed through the SSH runner:" << command;
+        return;
+    }
+
+    QStringList remoteArgs = args;
+    if (!remoteArgs.isEmpty() && remoteArgs.first().contains(QLatin1Char('@')))
+        remoteArgs.removeFirst();
+    if (remoteArgs.isEmpty()) {
+        qWarning() << "SSH command is empty";
+        return;
+    }
+    const QString remoteCommand = remoteArgs.join(QLatin1Char(' '));
+    QtConcurrent::run([remoteCommand]() {
+        const QString output = executeSshWithLibssh2(remoteCommand);
+        if (!output.trimmed().isEmpty())
+            qInfo().noquote() << "[SSH]" << output.trimmed();
+    });
 }
 
 
