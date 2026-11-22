@@ -208,7 +208,6 @@ MainWindow::MainWindow(QWidget *parent)
     ui->drmLayout->insertLayout(2, drmProcessStatusLayout);
 
     auto *drmProcessStatusTimer = new QTimer(this);
-    auto *drmProcessStatusProcess = new QProcess(this);
     drmProcessStatusTimer->setInterval(2500);
 
     auto setDrmProcessStatus = [](QLabel *label, const QString &name, bool running) {
@@ -275,8 +274,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (index == drmPageIndex) {
             if (!drmProcessStatusTimer->isActive()) {
                 drmProcessStatusTimer->start();
-                if (drmProcessStatusProcess->state() == QProcess::NotRunning)
-                    checkDrmProcesses();
+                checkDrmProcesses();
             }
         } else {
             drmProcessStatusTimer->stop();
@@ -379,8 +377,7 @@ MainWindow::MainWindow(QWidget *parent)
             if (index == youtubePageIndex) {
                 if (!youtubeStatusTimer->isActive()) {
                     youtubeStatusTimer->start();
-                    if (youtubeStatusProcess->state() == QProcess::NotRunning)
-                        checkYoutubeProcesses();
+                    checkYoutubeProcesses();
                 }
             } else {
                 youtubeStatusTimer->stop();
