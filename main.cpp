@@ -43,12 +43,28 @@ int main(int argc, char *argv[])
     // OpenWV is built separately; its device identity must remain local.
     QString widevinePath = qEnvironmentVariable("KODIGUI_WIDEVINE_PATH");
     if (widevinePath.isEmpty()) {
-        widevinePath = QDir::home().filePath(
-            QStringLiteral(".local/share/KodiGui/widevine/libwidevinecdm.so"));
+        // Prefer the CDM shipped beside the application. Resolve /proc/self/exe
+        // so launching KodiGui from another working directory still works.
+        const QString executablePath =
+            QFileInfo(QStringLiteral("/proc/self/exe")).canonicalFilePath();
+        const QString applicationDir = executablePath.isEmpty()
+            ? QDir::currentPath()
+            : QFileInfo(executablePath).absolutePath();
+        const QString bundledWidevinePath = QDir(applicationDir).filePath(
+            QStringLiteral("libwidevinecdm/linux/libwidevinecdm.so"));
+        const QFileInfo bundledWidevineInfo(bundledWidevinePath);
+
+        if (bundledWidevineInfo.isFile() && bundledWidevineInfo.isReadable()) {
+            widevinePath = bundledWidevineInfo.absoluteFilePath();
+        } else {
+            widevinePath = QDir::home().filePath(
+                QStringLiteral(".local/share/KodiGui/widevine/libwidevinecdm.so"));
+        }
     }
 
     const QFileInfo widevineInfo(widevinePath);
     if (widevineInfo.isFile() && widevineInfo.isReadable()) {
+        widevinePath = widevineInfo.absoluteFilePath();
         widevinePath.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
         widevinePath.replace(QStringLiteral("\""), QStringLiteral("\\\""));
         chromiumFlags += QStringLiteral(" --widevine-path=\"%1\"").arg(widevinePath);
