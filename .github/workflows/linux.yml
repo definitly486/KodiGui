@@ -95,6 +95,9 @@ jobs:
           mkdir -p dist/kodigui-linux-x86_64
           install -m 0755 ./kodigui dist/kodigui-linux-x86_64/kodigui
           install -D -m 0755 runtime/streamlink dist/kodigui-linux-x86_64/runtime/streamlink
+          test -s libwidevinecdm/linux/libwidevinecdm.so
+          install -D -m 0755 libwidevinecdm/linux/libwidevinecdm.so \
+            dist/kodigui-linux-x86_64/libwidevinecdm/linux/libwidevinecdm.so
           cp README.md dist/kodigui-linux-x86_64/README.md
           cp ldd-report.txt dist/kodigui-linux-x86_64/
           tar -C dist -czf kodigui-linux-x86_64.tar.gz kodigui-linux-x86_64
