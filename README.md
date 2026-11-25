@@ -31,7 +31,7 @@ The executable is created as `./kodigui`.
 
 The **okko.tv** tab opens Okko inside the application's embedded Qt WebEngine browser. It is not an external browser. The tab has its own persistent browser profile, so the Okko login/session is kept between application launches on the computer running KodiGui.
 
-For DRM-protected playback, Qt WebEngine must be able to load a compatible Widevine Content Decryption Module (CDM). KodiGui does not include a CDM or device credentials in the repository.
+For DRM-protected playback, Qt WebEngine must be able to load a compatible Widevine Content Decryption Module (CDM). The Linux branch includes `libwidevinecdm/linux/libwidevinecdm.so` and uses it automatically when launching the application. An explicitly configured `KODIGUI_WIDEVINE_PATH` takes precedence; the per-user OpenWV installation is used as a fallback if the bundled library is absent.
 
 ### 1. Prepare the Widevine CDM
 
@@ -56,15 +56,21 @@ On success, the script installs:
 ~/.local/share/KodiGui/widevine/libwidevinecdm.so
 ```
 
-The script clones OpenWV into a temporary directory, embeds the supplied device identity while building, copies the resulting library to the local KodiGui data directory, and removes the temporary build directory. The `.wvd` file is not copied into the KodiGui repository.
+The script clones OpenWV into a temporary directory, embeds the supplied device identity while building, copies the resulting library to the local KodiGui data directory, and removes the temporary build directory. The `.wvd` file is not copied into the KodiGui repository. This per-user build remains available as a fallback or can be selected explicitly with `KODIGUI_WIDEVINE_PATH`.
 
-Keep both the original `.wvd` file and the generated `libwidevinecdm.so` private. Do not commit either file, add them to release archives, or send them in bug reports.
+Keep the original `.wvd` file private. The bundled Linux CDM is the repository-provided runtime binary; do not replace it with a device-specific build unless you intend to distribute that build.
 
 ### 2. Start KodiGui with the CDM
 
-KodiGui checks for the CDM at the default path above and passes it to Qt WebEngine using `--widevine-path`.
+KodiGui selects the CDM in this order:
 
-If you previously set `KODIGUI_WIDEVINE_PATH` to an old or invalid location, it overrides the default. To use the standard installation, start the application with that variable unset:
+1. `KODIGUI_WIDEVINE_PATH`, when explicitly set.
+2. `libwidevinecdm/linux/libwidevinecdm.so` beside the `kodigui` executable (including the Linux release archive layout).
+3. `~/.local/share/KodiGui/widevine/libwidevinecdm.so`.
+
+The selected library is passed to Qt WebEngine using `--widevine-path`. An explicitly set but invalid environment path is reported as missing rather than silently selecting another CDM.
+
+To use the bundled library, leave `KODIGUI_WIDEVINE_PATH` unset:
 
 ```bash
 cd /path/to/KodiGui
@@ -91,7 +97,7 @@ The Okko browser profile is stored locally under the application's `AppDataLocat
 
 ### 4. Troubleshooting
 
-- **`[Widevine] CDM not found`** — check that `libwidevinecdm.so` exists at the default path, or set `KODIGUI_WIDEVINE_PATH` to its actual location.
+- **`[Widevine] CDM not found`** — check the bundled `libwidevinecdm/linux/libwidevinecdm.so` beside the executable, or set `KODIGUI_WIDEVINE_PATH` to a valid library.
 - **The wrong CDM path is being used** — unset a stale `KODIGUI_WIDEVINE_PATH` as shown above.
 - **CDM loads but video does not play** — check the OpenWV diagnostic panel, confirm that the CDM is compatible with the Qt WebEngine/Chromium version and platform, and verify that the title is playable on the account. A detected CDM does not guarantee that the service will authorize playback.
 - **Okko asks you to sign in again** — the profile is local to the machine running KodiGui. Check that the application can write to its `AppDataLocation/okko-profile` directory and that browser cookies have not been cleared.
@@ -109,7 +115,7 @@ Do not post diagnostic logs, screenshots, MPD URLs, account cookies, device file
 - The URL-page **Info** button runs the standalone Streamlink bundled in `runtime/` in the Linux release archive, on the computer running KodiGui; it does not require Python or a system Streamlink installation. Streamlink actions on the YouTube and Match TV pages remain separate and continue to run on the configured Kodi host. Other helpers such as `yt-dlp`, `ffmpeg` and `N_m3u8DL-RE` must be installed on the machine where their commands are executed.
 - The URL tab's **kodidlp → run** action uses the same bundled local Streamlink to select the third available quality (or the last available quality if fewer than three are listed), creates a temporary `list.m3u`, uploads it to `/var/www/html/list.m3u` over the SSH/SFTP connection configured in **Настройки → SSH**, stops Kodi playback, performs the two `reloadlist` enable/disable toggles, waits, and opens PVR channel ID `1`. The `sshpass` utility and the two standalone shell scripts are not required.
 - The application connects to the configured Kodi/Raspberry Pi host over SSH and Kodi JSON-RPC. Update the host/user settings in the source before using it on a different network.
-- Widevine playback requires a separately supplied compatible CDM. Set `KODIGUI_WIDEVINE_PATH` to its `libwidevinecdm.so` path, or place it at `~/.local/share/KodiGui/widevine/libwidevinecdm.so`. No Widevine binary is bundled.
+- The Linux release archive includes `libwidevinecdm/linux/libwidevinecdm.so`; KodiGui loads it automatically when no `KODIGUI_WIDEVINE_PATH` override is set. A per-user CDM at `~/.local/share/KodiGui/widevine/libwidevinecdm.so` is used only when the bundled library is absent.
 
 ## GitHub Actions
 
